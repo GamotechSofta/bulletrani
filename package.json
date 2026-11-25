@@ -1,0 +1,14 @@
+{
+  "name": "aviator-platform",
+  "version": "1.0.0",
+  "description": "Aviator Real Crash Betting Platform with Provably Fair Math, Dual Betting Panels, Real-time Multiplayer Engine and Admin Backoffice",
+  "scripts": {
+    "start:backend": "npm --prefix backend start",
+    "start:backend-java": "cd backend-java && mvnw.cmd spring-boot:run",
+    "dev:backend": "npm --prefix backend start",
+    "dev:backend-java": "cd backend-java && mvnw.cmd spring-boot:run",
+    "dev:user": "npm --prefix user run dev",
+    "dev:admin": "npm --prefix admin run dev",
+    "build:all": "npm --prefix user run build && npm --prefix admin run build"
+  }
+}

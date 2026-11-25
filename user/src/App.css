@@ -1,0 +1,8 @@
+/* Utility helpers — keep unlayered only for non-conflicting rules */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
