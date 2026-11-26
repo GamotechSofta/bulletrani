@@ -1,6 +1,6 @@
-# Provider Integration — RikshawX
+# Provider Integration — BulletRani
 
-End-to-end notes for onboarding RikshawX on `api.dpbossking.com` (or local gateway).
+End-to-end notes for onboarding BulletRani on `api.dpbossking.com` (or local gateway).
 
 **Base URL:** `https://api.dpbossking.com/api/v1`  
 **Local:** `http://localhost:3000/api/v1`
@@ -11,9 +11,9 @@ End-to-end notes for onboarding RikshawX on `api.dpbossking.com` (or local gatew
 
 | Field | Value |
 |-------|--------|
-| `code` / `gameCode` | `RIKSHAWX` |
-| `slug` | `rikshawx` |
-| `name` | `RikshawX` |
+| `code` / `gameCode` | `BULLETRANI` |
+| `slug` | `bulletrani` |
+| `name` | `BulletRani` |
 | `status` | `ACTIVE` |
 | `launchUrl` | Deployed user client root, e.g. `https://play.yourcdn.com/` |
 | `maintenanceMode` | `false` |
@@ -26,7 +26,7 @@ The user client must be served at `launchUrl` and reads `?sessionToken=` on boot
 
 ### Admin
 
-- [ ] Game created with `code=RIKSHAWX`, `launchUrl`, `status=ACTIVE`
+- [ ] Game created with `code=BULLETRANI`, `launchUrl`, `status=ACTIVE`
 - [ ] Operator created with `apiKey`, `apiSecretPath`, matching `currency`
 - [ ] Game added to operator `enabledGames`
 - [ ] HMAC secret stored at `apiSecretPath`
@@ -44,7 +44,7 @@ The user client must be served at `launchUrl` and reads `?sessionToken=` on boot
 - [ ] `GET /enabled-games?operatorId=` for lobby
 - [ ] Play button hits **your** backend launch, not Provider API from the browser
 
-### RikshawX game client (this repo `/user`)
+### BulletRani game client (this repo `/user`)
 
 - [ ] `VITE_PROVIDER_API_URL` points at gateway `/api/v1`
 - [ ] Boot: `sessionToken` → validate → `TABLE_CREATED`
@@ -57,7 +57,7 @@ The user client must be served at `launchUrl` and reads `?sessionToken=` on boot
 
 - [ ] Open **Admin → Provider Integration** and enable wallet + paste game-server API key
   (or set `PROVIDER_ENABLED` / `GAME_SERVER_API_KEY` in env — admin UI overrides persist in store)
-- [ ] `gameCode` matches Provider admin game record (`RIKSHAWX`)
+- [ ] `gameCode` matches Provider admin game record (`BULLETRANI`)
 - [ ] Bets/cashouts use Provider wallet when `sessionToken` is present
 
 ---
@@ -95,7 +95,7 @@ With a token that fails validate (401 / 403 / 404), gameplay is **blocked**.
 | Symptom | Likely cause |
 |---------|----------------|
 | Empty lobby games | Game not in operator `enabledGames` |
-| 403 Game not enabled | Wrong `gameCode` (use `RIKSHAWX`) |
+| 403 Game not enabled | Wrong `gameCode` (use `BULLETRANI`) |
 | 401 Invalid signature | Secret / path / raw body mismatch |
 | 401 Timestamp expired | Clock skew &gt; 5 minutes |
 | Session gate in client | Bad/expired `sessionToken` or validate down |

@@ -1,4 +1,4 @@
-# RikshawX Spring Boot Backend
+# BulletRani Spring Boot Backend
 
 Java/Spring Boot port of the Node crash-game engine.
 

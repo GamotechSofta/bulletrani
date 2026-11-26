@@ -18,8 +18,8 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
     enabled: false,
     apiUrl: 'https://api.dpbossking.com/api/v1',
     apiKey: '',
-    tableId: 'rikshawx_main',
-    gameCode: 'RIKSHAWX'
+    tableId: 'bulletrani_main',
+    gameCode: 'BULLETRANI'
   });
   const [meta, setMeta] = useState({ active: false, apiKeyConfigured: false, apiKeyMasked: '', walletMode: 'local' });
   const [providers, setProviders] = useState([]);
@@ -60,8 +60,8 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
           enabled: !!p.enabled,
           apiUrl: p.apiUrl || '',
           apiKey: '',
-          tableId: p.tableId || 'rikshawx_main',
-          gameCode: p.gameCode || 'RIKSHAWX'
+          tableId: p.tableId || 'bulletrani_main',
+          gameCode: p.gameCode || 'BULLETRANI'
         });
         setMeta({
           active: !!p.active,
@@ -285,7 +285,7 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
               <input
                 value={form.gameCode}
                 onChange={(e) => setForm({ ...form, gameCode: e.target.value.toUpperCase() })}
-                placeholder="RIKSHAWX"
+                placeholder="BULLETRANI"
                 className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 text-xs text-white outline-none focus:border-red-500 font-mono"
               />
               <p className="text-[10px] text-gray-500 mt-1">Must match Provider admin game <code>code</code> / launch <code>gameCode</code>.</p>
@@ -353,7 +353,7 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
 
       <div className="text-[11px] text-gray-500 leading-relaxed px-1">
         Operator create / enabled-games assignment still happens on the Provider platform admin
-        (<span className="text-gray-400">admin.dpbossking.com</span>). This panel configures the RikshawX game server side only.
+        (<span className="text-gray-400">admin.dpbossking.com</span>). This panel configures the BulletRani game server side only.
       </div>
     </div>
   );

@@ -62,8 +62,8 @@ export async function initProviderSession() {
 
     // 2) TABLE_CREATED after local table setup
     tableId = await sdk.createTable({
-      tableId: `rikshawx_${Date.now()}`,
-      game: session.gameCode || 'RIKSHAWX'
+      tableId: `bulletrani_${Date.now()}`,
+      game: session.gameCode || 'BULLETRANI'
     });
 
     ready = true;
