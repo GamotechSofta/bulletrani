@@ -48,6 +48,8 @@ public class DataStore {
     putSettingIfAbsent("min_bet", "10.0");
     putSettingIfAbsent("max_bet", "10000.0");
     putSettingIfAbsent("max_payout", "1000000.0");
+    putSettingIfAbsent("max_crash_multiplier", "20.0");
+    putSettingIfAbsent("max_round_stake", "0");
     putSettingIfAbsent("countdown_seconds", "5.0");
     putSettingIfAbsent("currency_symbol", "₹");
 
@@ -271,6 +273,13 @@ public class DataStore {
             .set("status", "completed")
             .set("crash_multiplier", crashMultiplier)
             .set("crashed_at", Instant.now().toString()),
+        GameRound.class);
+  }
+
+  public synchronized void updateRoundCrashMultiplier(long id, double crashMultiplier) {
+    mongo.updateFirst(
+        Query.query(Criteria.where("_id").is(id)),
+        Update.update("crash_multiplier", round2(crashMultiplier)),
         GameRound.class);
   }
 

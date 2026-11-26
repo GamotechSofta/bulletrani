@@ -253,24 +253,34 @@ public class CrashEngine {
   }
 
   /**
-   * Real player bets → ProvablyFair house-edge calculation (unchanged — uses round seeds).
-   * No real bets (bots-only / empty) → same mathematical distribution as fair crash
-   * (mostly early rugs, ~10% ≥10x) so Past Multipliers looks believable, not “always purple”.
-   * Admin next-crash override always wins.
+   * Real player bets → ProvablyFair with the latest admin house_edge (+ max crash cap).
+   * Recomputed at launch so settings saved during countdown actually apply.
+   * Bots-only → same curve for believable history.
+   * Admin next/live crash override always wins.
    */
   private void resolveCrashTargetAtLaunch() {
     if (currentRound == null) return;
     if (adminForcedCrash) return;
 
+    double houseEdgePct = db.getSettingDouble("house_edge", 3.0);
+    currentRound.houseEdge = houseEdgePct;
+    Map<String, Object> calc = ProvablyFair.calculateMultiplier(
+        currentRound.serverSeed, currentRound.clientSeed, houseEdgePct, currentRound.nonce);
+    fairCrashMultiplier = ((Number) calc.get("multiplier")).doubleValue();
+
+    double maxCrash = db.getSettingDouble("max_crash_multiplier", 20.0);
+    if (maxCrash < 1.0) maxCrash = 1.0;
+    double cappedFair = DataStore.round2(Math.min(fairCrashMultiplier, maxCrash));
+
     if (hasRealPlayerBets()) {
       currentCrashOverride = null;
-      currentRound.crashMultiplier = fairCrashMultiplier;
+      currentRound.crashMultiplier = cappedFair;
+      db.updateRoundCrashMultiplier(currentRound.id, cappedFair);
       return;
     }
 
-    // Bots-only entertainment: Bustabit-shaped sample (same formula as ProvablyFair,
-    // but random float — does NOT rewrite seed-based fairCrashMultiplier for real bets).
-    double houseEdge = (currentRound.houseEdge > 0 ? currentRound.houseEdge : 3.0) / 100.0;
+    // Bots-only entertainment: Bustabit-shaped sample (same formula as ProvablyFair).
+    double houseEdge = houseEdgePct / 100.0;
     double floatVal = ThreadLocalRandom.current().nextDouble();
     double target;
     if (floatVal < houseEdge) {
@@ -279,9 +289,17 @@ public class CrashEngine {
       double raw = (1.0 - houseEdge) / (1.0 - floatVal);
       target = Math.max(1.01, Math.floor(raw * 100.0) / 100.0);
     }
-    target = DataStore.round2(Math.max(1.00, target));
+    target = DataStore.round2(Math.max(1.00, Math.min(target, maxCrash)));
     currentRound.crashMultiplier = target;
     currentCrashOverride = target;
+  }
+
+  private double realStakeInRound() {
+    double sum = 0;
+    for (ActiveBet b : activeBets.values()) {
+      if (!b.isBot && !"cancelled".equals(b.status)) sum += b.betAmount;
+    }
+    return sum;
   }
 
   private void processAutoCashouts(double mult) {
@@ -415,6 +433,12 @@ public class CrashEngine {
     double maxBet = db.getSettingDouble("max_bet", 10000);
     if (Double.isNaN(amount) || amount < minBet || amount > maxBet) {
       fail.put("success", false); fail.put("message", "Bet must be between ₹" + minBet + " and ₹" + maxBet); return fail;
+    }
+    double maxRoundStake = db.getSettingDouble("max_round_stake", 0);
+    if (maxRoundStake > 0 && realStakeInRound() + amount > maxRoundStake) {
+      fail.put("success", false);
+      fail.put("message", "Round stake limit reached — try the next round");
+      return fail;
     }
     String key = userId + "_" + panelId;
     if (activeBets.containsKey(key)) {

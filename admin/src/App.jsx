@@ -46,6 +46,8 @@ export default function AdminApp() {
     min_bet: '10.0',
     max_bet: '10000.0',
     max_payout: '1000000.0',
+    max_crash_multiplier: '20.0',
+    max_round_stake: '0',
     countdown_seconds: '5.0'
   });
 
@@ -379,8 +381,9 @@ export default function AdminApp() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatusAlert('Game settings updated and applied instantly to engine!');
+        setStatusAlert('Settings saved — house edge / crash cap apply from the next launch');
         fetchStats();
+        fetchSettings();
       }
     } catch {
       setStatusAlert('Failed to save settings');
