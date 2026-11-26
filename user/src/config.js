@@ -1,24 +1,27 @@
 /**
- * API / Socket base URLs from Vite env.
- * On HTTP LAN only: rewrite localhost → page hostname so phones/PCs can connect.
- * Never rewrite on HTTPS (Vercel) — set real backend URLs in Vercel env instead.
+ * API / Socket base URLs from Vite env (baked in at build time).
+ * On LAN only: rewrite localhost → page hostname so phones can reach the host PC.
+ * Never rewrite on public hosts (e.g. *.vercel.app) — that would point at Vercel, not your API.
  */
+function isPrivateLanHost(hostname) {
+  return (
+    /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname) ||
+    hostname.endsWith('.local')
+  );
+}
+
 function resolveUrl(raw, fallback) {
   const value = (raw && String(raw).trim()) || fallback;
   if (typeof window === 'undefined') return value;
 
   try {
     const u = new URL(value);
-    const pageIsLocalHttp =
-      window.location.protocol === 'http:' &&
-      window.location.hostname !== 'localhost' &&
-      window.location.hostname !== '127.0.0.1';
-
+    const pageHost = window.location.hostname;
     if (
-      pageIsLocalHttp &&
+      isPrivateLanHost(pageHost) &&
       (u.hostname === 'localhost' || u.hostname === '127.0.0.1')
     ) {
-      u.hostname = window.location.hostname;
+      u.hostname = pageHost;
     }
     return u.toString().replace(/\/$/, '');
   } catch {
