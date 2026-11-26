@@ -1,6 +1,7 @@
 package com.bulletrani.web;
 
 import com.bulletrani.engine.CrashEngine;
+import com.bulletrani.engine.GameBroadcaster;
 import com.bulletrani.provider.ProviderWalletService;
 import com.bulletrani.security.JwtService;
 import com.bulletrani.store.DataStore;
@@ -19,12 +20,19 @@ public class AdminController {
   private final JwtService jwt;
   private final CrashEngine engine;
   private final ProviderWalletService provider;
+  private final GameBroadcaster bus;
 
-  public AdminController(DataStore db, JwtService jwt, CrashEngine engine, ProviderWalletService provider) {
+  public AdminController(
+      DataStore db,
+      JwtService jwt,
+      CrashEngine engine,
+      ProviderWalletService provider,
+      GameBroadcaster bus) {
     this.db = db;
     this.jwt = jwt;
     this.engine = engine;
     this.provider = provider;
+    this.bus = bus;
   }
 
   /** Live role check from DB — demoted admins lose access even with an old JWT. */
@@ -149,6 +157,7 @@ public class AdminController {
       double newBal = Math.max(0, DataStore.round2(u.balance + change));
       db.updateBalance(userId, newBal);
       db.insertTx(userId, "admin_adj", change, newBal, reason);
+      bus.emitToUser(userId, "wallet:updated", Map.of("balance", newBal));
       return ResponseEntity.ok(Map.of("success", true, "newBalance", newBal));
     } catch (Exception e) { return deny(e); }
   }

@@ -151,6 +151,26 @@ export default function App() {
         } catch {
           /* game-server provider wallet may be off in local dev */
         }
+      } else if (savedToken) {
+        // Local JWT: refresh wallet from server so admin credits aren't stuck in stale localStorage
+        try {
+          const res = await fetch(`${API_BASE}/api/wallet/balance`, {
+            headers: { Authorization: `Bearer ${savedToken}` }
+          });
+          const data = await res.json();
+          if (res.ok && data.balance != null) {
+            setUser((prev) => {
+              if (!prev) return prev;
+              const next = { ...prev, balance: data.balance };
+              try {
+                localStorage.setItem('aviator_user', JSON.stringify(next));
+              } catch { /* ignore */ }
+              return next;
+            });
+          }
+        } catch {
+          /* offline / backend down */
+        }
       }
 
       setBootState('ready');
@@ -294,7 +314,14 @@ export default function App() {
     });
 
     s.on('wallet:updated', (data) => {
-      setUser(prev => prev ? { ...prev, balance: data.balance } : null);
+      setUser(prev => {
+        if (!prev) return null;
+        const next = { ...prev, balance: data.balance };
+        try {
+          localStorage.setItem('aviator_user', JSON.stringify(next));
+        } catch { /* ignore quota */ }
+        return next;
+      });
     });
 
     setSocket(s);
