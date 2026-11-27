@@ -17,6 +17,8 @@ import {
   notifyRoundStarted,
   notifyRoundEnded
 } from './providerSdk';
+import { hasOperationsLaunch, bootOperationsSession, exitGame } from './operationsBoot';
+import { getUiStrings } from './currencyLang';
 import SessionGate from './components/SessionGate';
 import { ToastStack } from './components/Toast';
 import { API_BASE, SOCKET_SERVER } from './config';
@@ -36,7 +38,10 @@ export default function App() {
   const [socket, setSocket] = useState(null);
   const [bootState, setBootState] = useState('loading'); // loading | ready | blocked
   const [sessionError, setSessionError] = useState(null);
+  const [gateKind, setGateKind] = useState('provider'); // provider | operations
+  const [gateCloseUrl, setGateCloseUrl] = useState(null);
   const [providerMode, setProviderMode] = useState(false);
+  const [operationsSession, setOperationsSession] = useState(null);
   const [user, setUser] = useState({
     id: 1,
     username: 'TopGunPilot',
@@ -107,8 +112,49 @@ export default function App() {
     cacheRecentHistory(recentHistory);
   }, [recentHistory]);
 
-  // Phase 3 boot: validate sessionToken from launchUrl (or local demo if absent)
+  // Boot: handle Operations 302 launch (?token=&partner_code=&gid=), legacy Provider (?sessionToken=), or local mode
   useEffect(() => {
+    if (hasOperationsLaunch()) {
+      setToken(null);
+      bootOperationsSession().then((result) => {
+        if (result.mode === 'error') {
+          setGateKind('operations');
+          setGateCloseUrl(result.closeUrl || null);
+          setSessionError(result.error);
+          setBootState('blocked');
+          return;
+        }
+        if (result.mode === 'operations') {
+          const s = result.session;
+          const lang = s.lang || 'en';
+          const currency = s.currency || 'INR';
+          document.documentElement.lang = lang;
+          setOperationsSession({
+            ...s,
+            token: result.token,
+            showExitButton: result.ui?.showExitButton !== false,
+            walletReady: !!result.ui?.walletReady
+          });
+          setUser({
+            id: result.userId ?? s.userId ?? 0,
+            username: s.username || 'Player',
+            balance: result.balance ?? 0,
+            currency,
+            lang,
+            partnerCode: s.partnerCode,
+            gid: s.gid,
+            gameCode: s.gameCode,
+            role: 'player'
+          });
+          setToken(result.jwt || null);
+          setBootState('ready');
+          return;
+        }
+        setBootState('ready');
+      });
+      return;
+    }
+
     const savedToken = localStorage.getItem('aviator_token');
     const savedUser = localStorage.getItem('aviator_user');
     if (savedToken && savedUser) {
@@ -118,6 +164,7 @@ export default function App() {
 
     initProviderSession().then(async (result) => {
       if (result.mode === 'error') {
+        setGateKind('provider');
         setSessionError(result.error);
         setBootState('blocked');
         return;
@@ -317,11 +364,27 @@ export default function App() {
       setUser(prev => {
         if (!prev) return null;
         const next = { ...prev, balance: data.balance };
-        try {
-          localStorage.setItem('aviator_user', JSON.stringify(next));
-        } catch { /* ignore quota */ }
+        if (!operationsSession) {
+          try {
+            localStorage.setItem('aviator_user', JSON.stringify(next));
+          } catch { /* ignore quota */ }
+        }
         return next;
       });
+    });
+
+    s.on('round:aborted', (data) => {
+      setGameState('CRASHED');
+      setActiveBets({});
+      showToast(data?.reason ? `Round aborted (${data.reason}) — bets refunded` : 'Round aborted — bets refunded', 'error');
+    });
+
+    s.on('operations:session_expired', (data) => {
+      setActiveBets({});
+      setGateKind('operations');
+      if (data?.closeUrl) setGateCloseUrl(data.closeUrl);
+      setSessionError(data?.message || 'Session expired or invalid. Please return to the lobby.');
+      setBootState('blocked');
     });
 
     setSocket(s);
@@ -329,7 +392,7 @@ export default function App() {
     return () => {
       s.disconnect();
     };
-  }, [user?.id, token]);
+  }, [user?.id, token, operationsSession]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/game/leaderboard`)
@@ -346,6 +409,10 @@ export default function App() {
   // Betting Actions
   const handlePlaceBet = (panelId, amount, autoCashout) => {
     if (!socket || !user) {
+      if (operationsSession) {
+        showToast('Operations session is still connecting', 'error');
+        return;
+      }
       setShowAuth(true);
       return;
     }
@@ -354,7 +421,8 @@ export default function App() {
       panelId,
       amount,
       autoCashout,
-      sessionToken: getSessionToken()
+      sessionToken: getSessionToken(),
+      opsToken: operationsSession?.token || null
     }, (res) => {
       if (res && res.success) {
         setActiveBets(prev => ({
@@ -371,6 +439,11 @@ export default function App() {
         if (res.newBalance != null) {
           setUser(prev => ({ ...prev, balance: res.newBalance }));
         }
+      } else if (res?.sessionExpired) {
+        setGateKind('operations');
+        setGateCloseUrl(res.closeUrl || operationsSession?.closeUrl || null);
+        setSessionError(res.message || 'Session expired or invalid. Please return to the lobby.');
+        setBootState('blocked');
       } else {
         showToast(res?.message || 'Failed to place bet', 'error');
       }
@@ -381,7 +454,8 @@ export default function App() {
     if (!socket || !user) return;
     socket.emit('bet:cancel', {
       panelId,
-      sessionToken: getSessionToken()
+      sessionToken: getSessionToken(),
+      opsToken: operationsSession?.token || null
     }, (res) => {
       if (res && res.success) {
         setActiveBets(prev => {
@@ -392,6 +466,11 @@ export default function App() {
         if (res.newBalance != null) {
           setUser(prev => ({ ...prev, balance: res.newBalance }));
         }
+      } else if (res?.sessionExpired) {
+        setGateKind('operations');
+        setGateCloseUrl(res.closeUrl || operationsSession?.closeUrl || null);
+        setSessionError(res.message || 'Session expired or invalid. Please return to the lobby.');
+        setBootState('blocked');
       } else if (res?.message) {
         showToast(res.message, 'error');
       }
@@ -402,6 +481,15 @@ export default function App() {
     if (!socket || !user) return;
     socket.emit('bet:cashout', {
       panelId,
+    }, (res) => {
+      if (res?.sessionExpired) {
+        setGateKind('operations');
+        setGateCloseUrl(res.closeUrl || operationsSession?.closeUrl || null);
+        setSessionError(res.message || 'Session expired or invalid. Please return to the lobby.');
+        setBootState('blocked');
+      } else if (res && res.success === false && res.message) {
+        showToast(res.message, 'error');
+      }
     });
   };
 
@@ -428,16 +516,39 @@ export default function App() {
     if (next) sound.unlock();
   };
 
+  const activeCurrency = operationsSession?.currency || user?.currency || 'INR';
+  const activeLang = operationsSession?.lang || user?.language || 'en';
+  const activeCloseUrl = operationsSession?.closeUrl || null;
+  const showLobbyExit = !!operationsSession?.showExitButton && (!!activeCloseUrl || !!operationsSession);
+  const handleExitLobby = () => exitGame(activeCloseUrl);
+  const t = getUiStrings(activeLang);
+
   if (bootState === 'loading') {
     return (
       <div className="min-h-dvh bg-[#050b14] text-gray-400 flex items-center justify-center text-sm tracking-wide">
-        Starting session…
+        {t.startingSession}
       </div>
     );
   }
 
   if (bootState === 'blocked') {
-    return <SessionGate message={sessionError} />;
+    return (
+      <SessionGate
+        title={gateKind === 'operations' ? 'Launch session unavailable' : undefined}
+        message={sessionError}
+        hint={
+          gateKind === 'operations' ? (
+            <>
+              Open this game from your operator lobby so valid{' '}
+              <code className="text-gray-300">?token=</code> &amp;{' '}
+              <code className="text-gray-300">partner_code</code> parameters are sent.
+            </>
+          ) : undefined
+        }
+        closeUrl={gateKind === 'operations' ? gateCloseUrl : null}
+        showExit={gateKind === 'operations'}
+      />
+    );
   }
 
   return (
@@ -448,13 +559,28 @@ export default function App() {
           Provider
         </div>
       )}
+      {operationsSession && (
+        <div className="absolute top-2 right-2 z-50 text-[10px] uppercase tracking-widest text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-0.5 pointer-events-none">
+          {operationsSession.partnerCode || 'OPS'} · {operationsSession.gameCode || 'BULLETRANI'}
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/[0.03] to-transparent z-0" />
 
       <TopGunHeader
         history={recentHistory}
         username={user?.username || 'TopGunPilot'}
         balance={user ? user.balance : 5895.75}
-        onOpenWallet={() => setShowWallet(true)}
+        currency={activeCurrency}
+        lang={activeLang}
+        showExit={showLobbyExit}
+        onExitLobby={handleExitLobby}
+        onOpenWallet={() => {
+          if (operationsSession) {
+            showToast('Wallet balance is managed via the operator lobby', 'error');
+            return;
+          }
+          setShowWallet(true);
+        }}
         onOpenProfile={() => setShowMenu(true)}
       />
 
@@ -486,6 +612,8 @@ export default function App() {
               onCancelBet={handleCancelBet}
               onCashout={handleCashout}
               sound={sound}
+              currency={activeCurrency}
+              lang={activeLang}
             />
 
             <TopGunBetConsole
@@ -498,6 +626,8 @@ export default function App() {
               onCancelBet={handleCancelBet}
               onCashout={handleCashout}
               sound={sound}
+              currency={activeCurrency}
+              lang={activeLang}
             />
           </div>
 
@@ -524,6 +654,8 @@ export default function App() {
               onCancelBet={handleCancelBet}
               onCashout={handleCashout}
               sound={sound}
+              currency={activeCurrency}
+              lang={activeLang}
             />
 
             <TopGunBetConsole
@@ -536,6 +668,8 @@ export default function App() {
               onCancelBet={handleCancelBet}
               onCashout={handleCashout}
               sound={sound}
+              currency={activeCurrency}
+              lang={activeLang}
             />
           </div>
         </div>
@@ -552,11 +686,22 @@ export default function App() {
       {showMenu && (
         <RikshaMenuModal
           user={user}
+          currency={activeCurrency}
+          lang={activeLang}
+          showExit={showLobbyExit}
+          onExitLobby={handleExitLobby}
+          operationsSession={operationsSession}
           soundEnabled={soundEnabled}
           musicEnabled={musicEnabled}
           onToggleSound={toggleSound}
           onToggleMusic={toggleMusic}
-          onOpenWallet={() => setShowWallet(true)}
+          onOpenWallet={() => {
+            if (operationsSession) {
+              showToast('Wallet balance is managed via the operator lobby', 'error');
+              return;
+            }
+            setShowWallet(true);
+          }}
           onOpenHowToPlay={() => setShowHowToPlay(true)}
           onOpenAuth={() => setShowAuth(true)}
           onLogout={handleLogout}

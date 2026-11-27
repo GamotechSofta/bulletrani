@@ -157,6 +157,42 @@ public class DataStore {
     return createUserInternal(username, email, password, balance, role);
   }
 
+  /**
+   * Resolves or provisions a dedicated player record for an Operations partner launch.
+   * Keyed by (partnerCode, operatorPlayerId/username) via a synthetic ops email so local accounts never collide.
+   */
+  public synchronized User findOrCreateOperationsUser(String partnerCode, String operatorUserId, String displayUsername) {
+    String safePartner = (partnerCode == null ? "ops" : partnerCode.trim())
+        .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
+    if (safePartner.isEmpty()) safePartner = "ops";
+
+    String rawIdentity = (operatorUserId != null && !operatorUserId.isBlank())
+        ? operatorUserId.trim()
+        : (displayUsername != null ? displayUsername.trim() : "player");
+    String safeIdentity = rawIdentity.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "");
+    if (safeIdentity.isEmpty()) safeIdentity = "player";
+
+    String email = ("ops." + safePartner + "." + safeIdentity + "@ops.bulletrani.local").toLowerCase(Locale.ROOT);
+    User existing = mongo.findOne(Query.query(Criteria.where("email").is(email)), User.class);
+    if (existing != null) {
+      return existing;
+    }
+
+    String baseName = (displayUsername != null && !displayUsername.isBlank())
+        ? displayUsername.trim()
+        : safeIdentity;
+    String candidate = baseName;
+    if (mongo.exists(Query.query(Criteria.where("username").regex("^" + java.util.regex.Pattern.quote(candidate) + "$", "i")), User.class)) {
+      candidate = baseName + "_" + safePartner;
+    }
+    int suffix = 1;
+    while (mongo.exists(Query.query(Criteria.where("username").regex("^" + java.util.regex.Pattern.quote(candidate) + "$", "i")), User.class)) {
+      candidate = baseName + "_" + safePartner + "_" + (++suffix);
+    }
+
+    return createUserInternal(candidate, email, UUID.randomUUID().toString(), 0, "player");
+  }
+
   private User createUserInternal(String username, String email, String password, double balance, String role) {
     User u = new User();
     u.id = next("users");

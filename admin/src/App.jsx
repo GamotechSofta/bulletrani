@@ -9,6 +9,7 @@ import LiveRadarTab from './components/LiveRadarTab';
 import PlayersTab from './components/PlayersTab';
 import SettingsTab from './components/SettingsTab';
 import ProviderTab from './components/ProviderTab';
+import OperationsTab from './components/OperationsTab';
 import RoundsLedgerTab from './components/RoundsLedgerTab';
 import TransactionsTab from './components/TransactionsTab';
 import './App.css';
@@ -551,6 +552,16 @@ export default function AdminApp() {
               path="/provider"
               element={
                 <ProviderTab
+                  token={token}
+                  apiBase={API_BASE}
+                  onAlert={(msg) => setStatusAlert(msg)}
+                />
+              }
+            />
+            <Route
+              path="/operations"
+              element={
+                <OperationsTab
                   token={token}
                   apiBase={API_BASE}
                   onAlert={(msg) => setStatusAlert(msg)}

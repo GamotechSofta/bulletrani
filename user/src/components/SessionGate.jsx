@@ -1,9 +1,11 @@
 import React from 'react';
+import { exitGame } from '../operationsBoot';
 
 /**
- * Blocks gameplay when launch URL had sessionToken but validate failed (401/403/404).
+ * Blocks gameplay when launch session validation fails or session expires (ERR-0011/0012/0013).
  */
-export default function SessionGate({ title, message }) {
+export default function SessionGate({ title, message, hint, closeUrl, showExit = false }) {
+  const canExit = !!closeUrl || showExit;
   return (
     <div className="min-h-dvh bg-[#050b14] text-white flex items-center justify-center p-6">
       <div className="max-w-md w-full rounded-3xl border border-white/10 bg-[#121622] p-6 shadow-2xl text-center">
@@ -18,9 +20,22 @@ export default function SessionGate({ title, message }) {
         </h1>
         <p className="text-sm text-gray-400 leading-relaxed mb-5">{message}</p>
         <p className="text-[11px] text-gray-500">
-          Open this game from your operator lobby so a valid{' '}
-          <code className="text-gray-300">sessionToken</code> is issued.
+          {hint || (
+            <>
+              Open this game from your operator lobby so a valid{' '}
+              <code className="text-gray-300">sessionToken</code> is issued.
+            </>
+          )}
         </p>
+        {canExit && (
+          <button
+            type="button"
+            onClick={() => exitGame(closeUrl)}
+            className="mt-5 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-colors cursor-pointer"
+          >
+            Return to Lobby
+          </button>
+        )}
       </div>
     </div>
   );

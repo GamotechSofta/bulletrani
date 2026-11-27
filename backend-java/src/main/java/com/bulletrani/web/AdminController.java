@@ -2,6 +2,7 @@ package com.bulletrani.web;
 
 import com.bulletrani.engine.CrashEngine;
 import com.bulletrani.engine.GameBroadcaster;
+import com.bulletrani.operations.OperationsLaunchService;
 import com.bulletrani.provider.ProviderWalletService;
 import com.bulletrani.security.JwtService;
 import com.bulletrani.store.DataStore;
@@ -20,6 +21,7 @@ public class AdminController {
   private final JwtService jwt;
   private final CrashEngine engine;
   private final ProviderWalletService provider;
+  private final OperationsLaunchService operations;
   private final GameBroadcaster bus;
 
   public AdminController(
@@ -27,11 +29,13 @@ public class AdminController {
       JwtService jwt,
       CrashEngine engine,
       ProviderWalletService provider,
+      OperationsLaunchService operations,
       GameBroadcaster bus) {
     this.db = db;
     this.jwt = jwt;
     this.engine = engine;
     this.provider = provider;
+    this.operations = operations;
     this.bus = bus;
   }
 
@@ -259,6 +263,19 @@ public class AdminController {
     catch (Exception e) { return deny(e); }
   }
 
+  @PostMapping("/abort-round")
+  public ResponseEntity<?> abortRound(@RequestHeader("Authorization") String auth,
+                                      @RequestBody(required = false) Map<String, Object> body) {
+    try {
+      requireAdmin(auth);
+      String reason = body != null && body.get("reason") != null
+          ? String.valueOf(body.get("reason"))
+          : "Aborted by admin";
+      Map<String, Object> r = engine.abortCurrentRound(reason);
+      return Boolean.TRUE.equals(r.get("success")) ? ResponseEntity.ok(r) : ResponseEntity.badRequest().body(r);
+    } catch (Exception e) { return deny(e); }
+  }
+
   @GetMapping("/provider")
   public ResponseEntity<?> getProvider(@RequestHeader("Authorization") String auth) {
     try {
@@ -315,10 +332,10 @@ public class AdminController {
       row.put("winCount", pFin.getOrDefault("wins", 0.0).longValue());
       providers.add(row);
 
-      // Any historical wallet_source keys not already listed
+      // Any historical wallet_source keys not already listed (skip ops:* which live in Operations tab)
       for (Map.Entry<String, Map<String, Double>> e : finance.entrySet()) {
         String key = e.getKey();
-        if ("local".equals(key) || pid.equals(key)) continue;
+        if ("local".equals(key) || pid.equals(key) || key.startsWith("ops:")) continue;
         Map<String, Double> fin = e.getValue();
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("id", key);
@@ -400,5 +417,105 @@ public class AdminController {
     } catch (Exception e) {
       return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
     }
+  }
+
+  @GetMapping("/operations")
+  public ResponseEntity<?> getOperations(@RequestHeader("Authorization") String auth) {
+    try {
+      requireAdmin(auth);
+      Map<String, Map<String, Double>> allFinance = db.sumFinanceByWalletSource();
+      List<Map<String, Object>> partnerRows = new ArrayList<>();
+      double totalVol = 0;
+      double totalPay = 0;
+      long totalBets = 0;
+      long totalWins = 0;
+      for (Map.Entry<String, Map<String, Double>> e : allFinance.entrySet()) {
+        if (!e.getKey().startsWith("ops:")) continue;
+        String partner = e.getKey().substring(4);
+        Map<String, Double> fin = e.getValue();
+        double vol = fin.getOrDefault("volume", 0.0);
+        double pay = fin.getOrDefault("payout", 0.0);
+        long bets = fin.getOrDefault("bets", 0.0).longValue();
+        long wins = fin.getOrDefault("wins", 0.0).longValue();
+        totalVol += vol;
+        totalPay += pay;
+        totalBets += bets;
+        totalWins += wins;
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("partnerCode", partner);
+        row.put("totalVolume", vol);
+        row.put("totalPayout", pay);
+        row.put("grossGamingRevenue", fin.getOrDefault("ggr", 0.0));
+        row.put("actualRTP", fin.getOrDefault("rtp", 0.0));
+        row.put("betCount", bets);
+        row.put("winCount", wins);
+        partnerRows.add(row);
+      }
+      double totalVolR = DataStore.round2(totalVol);
+      double totalPayR = DataStore.round2(totalPay);
+      Map<String, Object> financeSummary = new LinkedHashMap<>();
+      financeSummary.put("totalVolume", totalVolR);
+      financeSummary.put("totalPayout", totalPayR);
+      financeSummary.put("grossGamingRevenue", DataStore.round2(totalVolR - totalPayR));
+      financeSummary.put("actualRTP", totalVolR > 0 ? DataStore.round2((totalPayR / totalVolR) * 100) : 0.0);
+      financeSummary.put("betCount", totalBets);
+      financeSummary.put("winCount", totalWins);
+      financeSummary.put("partners", partnerRows);
+
+      Map<String, Object> out = new LinkedHashMap<>();
+      out.put("success", true);
+      out.put("operations", operations.getAdminConfig());
+      out.put("recentLaunches", operations.getRecentLaunches());
+      out.put("finance", financeSummary);
+      return ResponseEntity.ok(out);
+    } catch (Exception e) { return deny(e); }
+  }
+
+  @PutMapping("/operations")
+  public ResponseEntity<?> saveOperations(@RequestHeader("Authorization") String auth,
+                                          @RequestBody Map<String, Object> body) {
+    try {
+      requireAdmin(auth);
+      Map<String, Object> cfg = operations.updateConfig(body);
+      return ResponseEntity.ok(Map.of(
+          "success", true,
+          "message", "Operations launch settings saved",
+          "operations", cfg
+      ));
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
+    } catch (Exception e) { return deny(e); }
+  }
+
+  @PostMapping("/operations/test-boot")
+  public ResponseEntity<?> testOperationsBoot(@RequestHeader("Authorization") String auth,
+                                              @RequestBody Map<String, Object> body) {
+    try {
+      requireAdmin(auth);
+      Map<String, Object> res = operations.bootSession(body, true);
+      return Boolean.TRUE.equals(res.get("success"))
+          ? ResponseEntity.ok(res)
+          : ResponseEntity.badRequest().body(res);
+    } catch (Exception e) { return deny(e); }
+  }
+
+  /** Support: test 2051 initial balance fetch via Operations /api/v1/wallet/balance. */
+  @PostMapping("/operations/balance-lookup")
+  public ResponseEntity<?> operationsBalanceLookup(@RequestHeader("Authorization") String auth,
+                                                   @RequestBody Map<String, String> body) {
+    try {
+      requireAdmin(auth);
+      String token = body == null ? null : body.get("token");
+      String partnerCode = body == null ? null : body.get("partner_code");
+      if (partnerCode == null && body != null) partnerCode = body.get("partnerCode");
+      Map<String, Object> res = operations.fetchBalance2051(token, partnerCode);
+      if (!Boolean.TRUE.equals(res.get("success"))) {
+        return ResponseEntity.badRequest().body(Map.of(
+            "success", false,
+            "error", String.valueOf(res.getOrDefault("message", "2051 balance lookup failed"))
+        ));
+      }
+      return ResponseEntity.ok(res);
+    } catch (Exception e) { return deny(e); }
   }
 }

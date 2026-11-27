@@ -1,4 +1,4 @@
-﻿package com.bulletrani.config;
+package com.bulletrani.config;
 
 import org.springframework.web.cors.CorsConfiguration;
 

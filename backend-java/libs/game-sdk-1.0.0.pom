@@ -9,7 +9,7 @@
   <version>1.0.0</version>
   <packaging>jar</packaging>
 
-  <name>Gamotech Provider Game SDK</name>
+  <name>Orenge Provider Game SDK</name>
   <description>Java game server SDK for Provider wallet operations (balance, debit, credit)</description>
   <url>https://github.com/GamotechRepositories/Provider/tree/main/sdks/java</url>
 

@@ -53,8 +53,9 @@ public class SocketEventHandlers {
         double amount = Double.parseDouble(String.valueOf(data.get("amount")));
         Double auto = data.get("autoCashout") == null || "null".equals(String.valueOf(data.get("autoCashout")))
             ? null : Double.parseDouble(String.valueOf(data.get("autoCashout")));
-        String sessionToken = readSessionToken(data);
-        Map<String, Object> result = engine.placeBet(userId, panelId, amount, auto, sessionToken);
+        String sessionToken = readTokenField(data, "sessionToken");
+        String opsToken = readTokenField(data, "opsToken");
+        Map<String, Object> result = engine.placeBet(userId, panelId, amount, auto, sessionToken, opsToken);
         if (ack.isAckRequested()) ack.sendAckData(result);
       } catch (Exception e) {
         if (ack.isAckRequested()) {
@@ -68,8 +69,9 @@ public class SocketEventHandlers {
       if (userId == null) return;
       try {
         int panelId = Integer.parseInt(String.valueOf(data.get("panelId")));
-        String sessionToken = readSessionToken(data);
-        Map<String, Object> result = engine.cancelBet(userId, panelId, sessionToken);
+        String sessionToken = readTokenField(data, "sessionToken");
+        String opsToken = readTokenField(data, "opsToken");
+        Map<String, Object> result = engine.cancelBet(userId, panelId, sessionToken, opsToken);
         if (ack.isAckRequested()) ack.sendAckData(result);
       } catch (Exception e) {
         if (ack.isAckRequested()) {
@@ -167,10 +169,10 @@ public class SocketEventHandlers {
     return userId;
   }
 
-  private static String readSessionToken(Map data) {
-    if (data == null || data.get("sessionToken") == null) return null;
-    String t = String.valueOf(data.get("sessionToken"));
+  private static String readTokenField(Map data, String key) {
+    if (data == null || data.get(key) == null) return null;
+    String t = String.valueOf(data.get(key));
     if (t.isBlank() || "null".equalsIgnoreCase(t)) return null;
-    return t;
+    return t.trim();
   }
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatAmount, getUiStrings } from '../currencyLang';
 
 export default function TopGunBetConsole({
   panelId,
@@ -10,6 +11,8 @@ export default function TopGunBetConsole({
   onCancelBet,
   onCashout,
   sound,
+  currency = 'INR',
+  lang = 'en',
   collapsible = false,
   collapsed = false,
   onToggleCollapse
@@ -18,6 +21,7 @@ export default function TopGunBetConsole({
   const [mode, setMode] = useState('bet');
   const [autoCashout, setAutoCashout] = useState(2.0);
 
+  const t = getUiStrings(lang);
   const presets = [20, 100, 1000, 5000];
 
   useEffect(() => {
@@ -46,8 +50,7 @@ export default function TopGunBetConsole({
     ? (activeBet.betAmount * currentMultiplier).toFixed(2)
     : null;
 
-  const formatAmt = (n) =>
-    Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatAmt = (n) => formatAmount(n, lang, currency);
 
   if (collapsed && collapsible) {
     return (
@@ -91,7 +94,7 @@ export default function TopGunBetConsole({
                 mode === tab ? 'bg-[#2c2d30] text-white' : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              {tab === 'bet' ? 'Bet' : 'Auto'}
+              {tab === 'bet' ? t.tabBet : t.tabAuto}
             </button>
           ))}
         </div>
@@ -139,7 +142,7 @@ export default function TopGunBetConsole({
 
           {mode === 'auto' && (
             <div className="flex items-center justify-between bg-[#0d0d0d] rounded-md h-6 px-2">
-              <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Auto</span>
+              <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">{t.auto}</span>
               <input
                 type="number"
                 min="1.01"
@@ -159,7 +162,7 @@ export default function TopGunBetConsole({
               onClick={handleActionClick}
               className={`${actionBtn} bg-[#e9a820] text-white animate-pulse`}
             >
-              <span className="text-[12px] uppercase tracking-wide opacity-90 font-bold leading-none">Cash Out</span>
+              <span className="text-[12px] uppercase tracking-wide opacity-90 font-bold leading-none">{t.cashOut}</span>
               <span className="text-[20px] font-black leading-none tabular-nums">{formatAmt(liveWinAmount)}</span>
             </button>
           ) : activeBet && activeBet.status === 'active' && gameState === 'WAITING' ? (
@@ -167,12 +170,12 @@ export default function TopGunBetConsole({
               onClick={handleActionClick}
               className={`${actionBtn} bg-[#c0392b] text-white`}
             >
-              <span className="text-[12px] uppercase tracking-wide font-bold leading-none">Cancel</span>
+              <span className="text-[12px] uppercase tracking-wide font-bold leading-none">{t.cancel}</span>
               <span className="text-[20px] font-black leading-none tabular-nums">{formatAmt(activeBet.betAmount)}</span>
             </button>
           ) : activeBet && activeBet.status === 'cashed_out' ? (
             <div className={`${actionBtn} bg-[#14301f] border border-emerald-700/40 text-emerald-400 cursor-default`}>
-              <span className="text-[12px] uppercase tracking-wide font-bold leading-none">Won</span>
+              <span className="text-[12px] uppercase tracking-wide font-bold leading-none">{t.won}</span>
               <span className="text-[20px] font-black leading-none tabular-nums">+{formatAmt(activeBet.winAmount)}</span>
             </div>
           ) : (
@@ -181,7 +184,7 @@ export default function TopGunBetConsole({
               disabled={userBalance < amount}
               className={`${actionBtn} bg-[#28a700] text-white shadow-[0_1px_0_#1e7a00,inset_0_1px_0_rgba(255,255,255,0.25)] disabled:opacity-40 disabled:cursor-not-allowed`}
             >
-              <span className="text-[13px] uppercase tracking-wide font-bold leading-none">BET</span>
+              <span className="text-[13px] uppercase tracking-wide font-bold leading-none">{t.bet}</span>
               <span className="text-[22px] font-black leading-none tabular-nums">{formatAmt(amount)}</span>
             </button>
           )}

@@ -4,8 +4,10 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconWallet,
-  IconPlus
+  IconPlus,
+  IconHome
 } from './Icons';
+import { formatMoney, getUiStrings } from '../currencyLang';
 
 function CheckeredLogo() {
   return (
@@ -41,12 +43,17 @@ export default function TopGunHeader({
   history,
   username = 'TopGunPilot',
   balance = 5895.75,
+  currency = 'INR',
+  lang = 'en',
+  showExit = false,
+  onExitLobby,
   onOpenWallet,
   onSelectRound,
   onOpenProfile
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const scrollerRef = useRef(null);
+  const t = getUiStrings(lang);
 
   const toneFor = (m) => {
     if (m >= 100) return 'legendary';
@@ -86,10 +93,7 @@ export default function TopGunHeader({
     scrollerRef.current.scrollBy({ left: dir * 120, behavior: 'smooth' });
   };
 
-  const shortBalance = balance.toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
+  const formattedBalance = formatMoney(balance, currency, lang);
 
   return (
     <header className="w-full bg-[#0d0f12]/95 border-b border-white/[0.06] px-1.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-3 select-none z-30 shrink-0 safe-top">
@@ -186,13 +190,26 @@ export default function TopGunHeader({
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
+        {showExit && onExitLobby && (
+          <button
+            type="button"
+            onClick={onExitLobby}
+            title={t.exitLobby}
+            aria-label={t.exitLobby}
+            className="flex items-center gap-1 bg-[#14161a] hover:bg-white/10 border border-white/10 rounded-full h-7 sm:h-8 px-2 sm:px-2.5 text-gray-200 text-[10px] sm:text-xs font-bold transition-colors cursor-pointer"
+          >
+            <IconHome className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">{t.exitShort}</span>
+          </button>
+        )}
+
         <button
           onClick={onOpenWallet}
           className="flex items-center gap-0.5 sm:gap-2 bg-[#14161a] border border-white/10 rounded-full pl-1.5 sm:pl-2.5 pr-1 py-1 cursor-pointer"
         >
           <IconWallet className="hidden xs:block w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-300 max-[380px]:hidden" />
           <span className="font-extrabold text-white text-[10px] sm:text-sm font-mono tracking-tight max-w-[64px] sm:max-w-none truncate">
-            ₹{shortBalance}
+            {formattedBalance}
           </span>
           <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#28a700] text-white flex items-center justify-center shrink-0">
             <IconPlus className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />

@@ -6,6 +6,7 @@ import {
   Users,
   Settings2,
   Link2,
+  Globe,
   ScrollText,
   CreditCard,
   X
@@ -17,6 +18,7 @@ export const ADMIN_NAV = [
   { path: '/players', label: 'Pilot Management', Icon: Users },
   { path: '/settings', label: 'Risk & Math Config', Icon: Settings2 },
   { path: '/provider', label: 'Provider Integration', Icon: Link2 },
+  { path: '/operations', label: 'Operations Launch', Icon: Globe },
   { path: '/rounds', label: 'Provably Fair Ledger', Icon: ScrollText },
   { path: '/transactions', label: 'All Transactions', Icon: CreditCard }
 ];

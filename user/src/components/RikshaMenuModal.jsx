@@ -3,8 +3,10 @@ import {
   IconPlane,
   IconWallet,
   IconVolumeUp,
-  IconVolumeMute
+  IconVolumeMute,
+  IconHome
 } from './Icons';
+import { formatMoney, getUiStrings } from '../currencyLang';
 
 function ToggleRow({ label, hint, enabled, onToggle }) {
   return (
@@ -38,6 +40,11 @@ function ToggleRow({ label, hint, enabled, onToggle }) {
 
 export default function RikshaMenuModal({
   user,
+  currency = 'INR',
+  lang = 'en',
+  showExit = false,
+  onExitLobby,
+  operationsSession = null,
   soundEnabled,
   musicEnabled,
   onToggleSound,
@@ -48,6 +55,7 @@ export default function RikshaMenuModal({
   onLogout,
   onClose
 }) {
+  const t = getUiStrings(lang);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in select-none">
       <div className="bg-[#101c27] border border-white/10 rounded-3xl max-w-sm w-full p-6 text-white shadow-2xl relative">
@@ -91,9 +99,9 @@ export default function RikshaMenuModal({
           >
             <div className="flex items-center gap-2.5">
               <IconWallet className="w-4 h-4 text-amber-400" />
-              <span className="font-semibold text-gray-200">My Wallet (Deposit / Withdraw)</span>
+              <span className="font-semibold text-gray-200">{t.wallet}</span>
             </div>
-            <span className="font-mono text-emerald-400 font-bold">₹{user?.balance?.toFixed(2)}</span>
+            <span className="font-mono text-emerald-400 font-bold">{formatMoney(user?.balance ?? 0, currency, lang)}</span>
           </button>
 
           {/* How to Play */}
@@ -107,8 +115,31 @@ export default function RikshaMenuModal({
             <span className="font-semibold text-gray-200">Game Rules & Strategy</span>
           </button>
 
+          {showExit && onExitLobby && (
+            <button
+              type="button"
+              onClick={() => { onClose(); onExitLobby(); }}
+              className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 font-bold text-left transition-colors cursor-pointer"
+            >
+              <span className="flex items-center gap-2.5">
+                <IconHome className="w-4 h-4 text-emerald-400" />
+                <span>{t.exitLobby}</span>
+              </span>
+              {operationsSession?.partnerCode && (
+                <span className="text-[10px] font-mono text-gray-400">{operationsSession.partnerCode}</span>
+              )}
+            </button>
+          )}
+
           {/* User Profile / Auth */}
-          {user ? (
+          {operationsSession ? (
+            <div className="w-full flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 text-gray-300 text-xs mt-2">
+              <span className="font-semibold">{user?.username || 'Player'}</span>
+              <span className="font-mono text-[10px] text-emerald-400">
+                {operationsSession.partnerCode || 'OPS'} · {currency}
+              </span>
+            </div>
+          ) : user ? (
             <button
               onClick={() => { onClose(); onLogout(); }}
               className="w-full flex items-center gap-2.5 p-3 rounded-xl bg-red-950/30 hover:bg-red-900/40 border border-red-500/20 text-red-300 font-bold text-left transition-colors mt-2 cursor-pointer"
