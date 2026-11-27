@@ -1,8 +1,8 @@
 /* Bullet Rani — cache audio / images only (never HTML/JS so Vite stays fresh) */
-const CACHE = 'bulletrani-static-v1';
+const CACHE = 'bulletrani-static-v2';
 
 const PRECACHE = [
-  '/bike.png',
+  '/bike-rider.png',
   '/favicon.svg',
   '/icons.svg',
   '/sounds/bg-music.mp3',

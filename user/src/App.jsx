@@ -474,8 +474,8 @@ export default function App() {
             />
           </div>
 
-          {/* Stacked bet panels on mobile; side-by-side on desktop */}
-          <div className="flex flex-col md:grid md:grid-cols-2 items-stretch gap-1.5 md:gap-2 shrink-0">
+          {/* Stacked bet panels on mobile */}
+          <div className="flex flex-col md:hidden items-stretch gap-1.5 shrink-0">
             <TopGunBetConsole
               panelId={1}
               gameState={gameState}
@@ -507,9 +507,37 @@ export default function App() {
           </div>
         </div>
 
-        {/* Players sidebar on desktop */}
-        <div className="hidden md:flex w-full md:w-72 lg:w-80 xl:w-[340px] flex-col shrink-0 min-h-0 md:h-full">
-          <TopGunPlayersList allBets={allBets} currentUserId={user?.id} />
+        {/* Players + stacked bet consoles sidebar on desktop */}
+        <div className="hidden md:flex w-full md:w-80 lg:w-[340px] xl:w-[360px] flex-col gap-2 shrink-0 min-h-0 md:h-full">
+          <div className="flex-1 min-h-0">
+            <TopGunPlayersList allBets={allBets} currentUserId={user?.id} />
+          </div>
+
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <TopGunBetConsole
+              panelId={1}
+              gameState={gameState}
+              currentMultiplier={multiplier}
+              userBalance={user ? user.balance : 0}
+              activeBet={activeBets[1]}
+              onPlaceBet={handlePlaceBet}
+              onCancelBet={handleCancelBet}
+              onCashout={handleCashout}
+              sound={sound}
+            />
+
+            <TopGunBetConsole
+              panelId={2}
+              gameState={gameState}
+              currentMultiplier={multiplier}
+              userBalance={user ? user.balance : 0}
+              activeBet={activeBets[2]}
+              onPlaceBet={handlePlaceBet}
+              onCancelBet={handleCancelBet}
+              onCashout={handleCashout}
+              sound={sound}
+            />
+          </div>
         </div>
       </div>
 
