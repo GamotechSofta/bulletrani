@@ -49,7 +49,7 @@ export default function App() {
     balance: 5895.75,
     role: 'player'
   });
-  const [token, setToken] = useState('demo_token');
+  const [token, setToken] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(cachedAudio.soundEnabled);
   const [musicEnabled, setMusicEnabled] = useState(cachedAudio.musicEnabled);
   const [vehicle, setVehicle] = useState('bike'); // Royal Enfield rider matching master design

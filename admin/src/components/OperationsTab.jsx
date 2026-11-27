@@ -18,16 +18,16 @@ const QUERY_PARAM_SPEC = [
 ];
 
 const INITIAL_TEST_PARAMS = {
-  token: 'tok_demo_launch_123456',
+  token: '',
   partner_code: 'ALPHA-TEST',
   gid: '1001',
   game_code: 'BULLETRANI',
   username: 'DemoPilot',
-  user_id: '4201',
+  user_id: '',
   currency: 'INR',
   lang: 'en',
-  extsess: 'ext_ref_001',
-  close_url: 'https://lobby.example.com'
+  extsess: '',
+  close_url: ''
 };
 
 /**
@@ -37,7 +37,7 @@ const INITIAL_TEST_PARAMS = {
 export default function OperationsTab({ token, apiBase, onAlert }) {
   const [form, setForm] = useState({
     enabled: false,
-    apiUrl: 'https://operations.dpbossking.com',
+    apiUrl: '',
     internalKey: '',
     clearInternalKey: false,
     launchUrl: '',
@@ -80,7 +80,7 @@ export default function OperationsTab({ token, apiBase, onAlert }) {
     const o = data.operations || {};
     setForm({
       enabled: !!o.enabled,
-      apiUrl: o.apiUrl || 'https://operations.dpbossking.com',
+      apiUrl: o.apiUrl || '',
       internalKey: '',
       clearInternalKey: false,
       launchUrl: o.launchUrl || '',
@@ -465,7 +465,7 @@ export default function OperationsTab({ token, apiBase, onAlert }) {
               <input
                 value={form.apiUrl}
                 onChange={(e) => setForm({ ...form, apiUrl: e.target.value })}
-                placeholder="https://operations.dpbossking.com"
+                placeholder="Set OPERATIONS_API_URL in backend .env or enter URL"
                 className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 text-xs text-white outline-none focus:border-red-500 font-mono"
               />
               <p className="text-[10px] text-gray-500 mt-1">

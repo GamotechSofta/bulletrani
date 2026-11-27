@@ -21,9 +21,9 @@ export default function AdminApp() {
   const [token, setToken] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Login form state — seeded admin: admin / 123456
-  const [loginId, setLoginId] = useState('admin');
-  const [loginPass, setLoginPass] = useState('123456');
+  // Login form state — credentials managed via backend .env (ADMIN_PASSWORD)
+  const [loginId, setLoginId] = useState('');
+  const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
 

@@ -12,7 +12,7 @@ import { ProviderGameSDK, ProviderSDKError } from '@gamotech/game-sdk-client';
  * Wallet debit/credit stays on the Java game server (never in browser).
  */
 
-const API_BASE = import.meta.env.VITE_PROVIDER_API_URL || 'https://api.dpbossking.com/api/v1';
+const API_BASE = (import.meta.env.VITE_PROVIDER_API_URL || '').trim();
 
 let sdk = null;
 let tableId = null;
@@ -47,13 +47,17 @@ export function hasLaunchSessionToken(search = window.location.search) {
  */
 export async function initProviderSession() {
   const launchedWithToken = hasLaunchSessionToken();
-  sdk = new ProviderGameSDK({ apiBaseUrl: API_BASE });
-
   if (!launchedWithToken) {
     ready = false;
     sdk = null;
     return { mode: 'local' };
   }
+  if (!API_BASE) {
+    ready = false;
+    sdk = null;
+    return { mode: 'error', error: 'VITE_PROVIDER_API_URL is not configured in user/.env.' };
+  }
+  sdk = new ProviderGameSDK({ apiBaseUrl: API_BASE });
 
   try {
     // 1) Validate session (required first step — do not trust URL for player/operator ids)

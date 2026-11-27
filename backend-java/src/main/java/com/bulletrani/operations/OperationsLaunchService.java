@@ -93,12 +93,19 @@ public class OperationsLaunchService {
   @PostConstruct
   public void loadPersisted() {
     AppProperties.Operations o = props.getOperations();
+    boolean envHasApiUrl = hasText(o.getApiUrl());
+    boolean envHasInternalKey = hasText(o.getInternalKey());
+
     String enabled = db.getSetting("ops_enabled", null);
     if (enabled != null) o.setEnabled(asBool(enabled));
-    String apiUrl = db.getSetting("ops_api_url", null);
-    if (apiUrl != null && !apiUrl.isBlank()) o.setApiUrl(trimTrailingSlash(apiUrl));
-    String internalKey = db.getSetting("ops_internal_key", null);
-    if (internalKey != null && !internalKey.isBlank()) o.setInternalKey(internalKey.trim());
+    if (!envHasApiUrl) {
+      String apiUrl = db.getSetting("ops_api_url", null);
+      if (apiUrl != null && !apiUrl.isBlank()) o.setApiUrl(trimTrailingSlash(apiUrl));
+    }
+    if (!envHasInternalKey) {
+      String internalKey = db.getSetting("ops_internal_key", null);
+      if (internalKey != null && !internalKey.isBlank()) o.setInternalKey(internalKey.trim());
+    }
     String launchUrl = db.getSetting("ops_launch_url", null);
     if (launchUrl != null) o.setLaunchUrl(launchUrl.trim());
     String gameCode = db.getSetting("ops_game_code", null);
@@ -199,12 +206,15 @@ public class OperationsLaunchService {
       }
       o.setApiUrl(apiUrl);
     }
+    boolean explicitKeyUpdate = false;
     if (body.containsKey("clearInternalKey") && asBool(body.get("clearInternalKey"))) {
       o.setInternalKey("");
+      explicitKeyUpdate = true;
     } else if (body.containsKey("internalKey")) {
       String key = str(body.get("internalKey"));
       if (hasText(key) && !key.contains("•") && !key.contains("*")) {
         o.setInternalKey(key);
+        explicitKeyUpdate = true;
       }
     }
     if (body.containsKey("launchUrl")) {
@@ -261,7 +271,9 @@ public class OperationsLaunchService {
     Map<String, Object> updates = new LinkedHashMap<>();
     updates.put("ops_enabled", String.valueOf(o.isEnabled()));
     updates.put("ops_api_url", nullToEmpty(o.getApiUrl()));
-    updates.put("ops_internal_key", nullToEmpty(o.getInternalKey()));
+    if (explicitKeyUpdate) {
+      updates.put("ops_internal_key", nullToEmpty(o.getInternalKey()));
+    }
     updates.put("ops_launch_url", nullToEmpty(o.getLaunchUrl()));
     updates.put("ops_game_code", nullToEmpty(o.getGameCode()));
     updates.put("ops_gid", nullToEmpty(o.getGid()));

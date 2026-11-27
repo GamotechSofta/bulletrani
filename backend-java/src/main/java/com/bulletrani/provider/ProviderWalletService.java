@@ -28,12 +28,19 @@ public class ProviderWalletService {
   @PostConstruct
   public void loadPersisted() {
     AppProperties.Provider p = props.getProvider();
+    boolean envHasApiUrl = p.getApiUrl() != null && !p.getApiUrl().isBlank();
+    boolean envHasApiKey = p.getApiKey() != null && !p.getApiKey().isBlank();
+
     String enabled = db.getSetting("provider_enabled", null);
     if (enabled != null) p.setEnabled("true".equalsIgnoreCase(enabled) || "1".equals(enabled));
-    String apiUrl = db.getSetting("provider_api_url", null);
-    if (apiUrl != null && !apiUrl.isBlank()) p.setApiUrl(apiUrl.trim());
-    String apiKey = db.getSetting("provider_api_key", null);
-    if (apiKey != null && !apiKey.isBlank()) p.setApiKey(apiKey.trim());
+    if (!envHasApiUrl) {
+      String apiUrl = db.getSetting("provider_api_url", null);
+      if (apiUrl != null && !apiUrl.isBlank()) p.setApiUrl(apiUrl.trim());
+    }
+    if (!envHasApiKey) {
+      String apiKey = db.getSetting("provider_api_key", null);
+      if (apiKey != null && !apiKey.isBlank()) p.setApiKey(apiKey.trim());
+    }
     String tableId = db.getSetting("provider_table_id", null);
     if (tableId != null && !tableId.isBlank()) p.setTableId(tableId.trim());
     String gameCode = db.getSetting("provider_game_code", null);
@@ -109,11 +116,13 @@ public class ProviderWalletService {
       String url = String.valueOf(body.get("apiUrl")).trim();
       if (!url.isEmpty()) p.setApiUrl(url.replaceAll("/+$", ""));
     }
+    boolean explicitKeyUpdate = false;
     if (body.containsKey("apiKey")) {
       String key = String.valueOf(body.get("apiKey")).trim();
       // Ignore masked placeholders / blanks so admins can save other fields without re-entering secret
       if (!key.isEmpty() && !key.contains("•") && !key.contains("*")) {
         p.setApiKey(key);
+        explicitKeyUpdate = true;
       }
     }
     if (body.containsKey("tableId")) {
@@ -125,13 +134,15 @@ public class ProviderWalletService {
       if (!code.isEmpty()) p.setGameCode(code);
     }
 
-    db.putSettings(Map.of(
-        "provider_enabled", String.valueOf(p.isEnabled()),
-        "provider_api_url", nullToEmpty(p.getApiUrl()),
-        "provider_api_key", nullToEmpty(p.getApiKey()),
-        "provider_table_id", nullToEmpty(p.getTableId()),
-        "provider_game_code", nullToEmpty(p.getGameCode())
-    ));
+    Map<String, Object> updates = new LinkedHashMap<>();
+    updates.put("provider_enabled", String.valueOf(p.isEnabled()));
+    updates.put("provider_api_url", nullToEmpty(p.getApiUrl()));
+    if (explicitKeyUpdate) {
+      updates.put("provider_api_key", nullToEmpty(p.getApiKey()));
+    }
+    updates.put("provider_table_id", nullToEmpty(p.getTableId()));
+    updates.put("provider_game_code", nullToEmpty(p.getGameCode()));
+    db.putSettings(updates);
 
     resetSdk();
     return getPublicConfig();

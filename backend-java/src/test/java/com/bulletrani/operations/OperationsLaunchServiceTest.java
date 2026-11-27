@@ -246,4 +246,22 @@ class OperationsLaunchServiceTest {
     assertEquals("u_99", call.body().get("user_id").getAsString());
     assertEquals(75.0, call.body().get("win").getAsDouble(), 0.001);
   }
+
+  @Test
+  void envCredentialsAreKeptAndNeverCopiedToDatabaseUnlessExplicitlyUpdated() {
+    props.getOperations().setApiUrl("https://env-ops.example.com");
+    props.getOperations().setInternalKey("env_secret_key_8888");
+    when(db.getSetting("ops_api_url", null)).thenReturn("https://stale-db.example.com");
+    when(db.getSetting("ops_internal_key", null)).thenReturn("stale_db_key");
+
+    service.loadPersisted();
+    assertEquals("https://env-ops.example.com", props.getOperations().getApiUrl());
+    assertEquals("env_secret_key_8888", props.getOperations().getInternalKey());
+
+    service.updateConfig(Map.of("gameCode", "BULLETRANI"));
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> cap = ArgumentCaptor.forClass(Map.class);
+    verify(db).putSettings(cap.capture());
+    assertFalse(cap.getValue().containsKey("ops_internal_key"));
+  }
 }

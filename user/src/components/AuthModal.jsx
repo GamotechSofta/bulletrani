@@ -121,11 +121,6 @@ export default function AuthModal({ onLoginSuccess, onClose }) {
             {isRegister ? 'Already registered? Sign In' : "Don't have an account? Sign Up"}
           </button>
         </div>
-
-        {/* Demo Credentials Quick Fill */}
-        <div className="mt-4 pt-3 border-t border-white/10 text-[10px] text-gray-500 text-center">
-          Quick Demo Pilot: <button onClick={() => { setLogin('TopGunPilot'); setPassword('pilot123'); setIsRegister(false); }} className="text-emerald-400 underline font-semibold">Fill TopGunPilot</button>
-        </div>
       </div>
     </div>
   );

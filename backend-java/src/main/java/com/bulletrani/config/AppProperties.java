@@ -42,7 +42,7 @@ public class AppProperties {
   public static class Provider {
     /** When true, bets debit/credit via Provider Game SDK instead of local wallet. */
     private boolean enabled = false;
-    private String apiUrl = "https://api.dpbossking.com/api/v1";
+    private String apiUrl = "";
     private String apiKey = "";
     private String tableId = "bulletrani_main";
     /** Must match admin panel game `code` / launch `gameCode`. */
@@ -63,9 +63,9 @@ public class AppProperties {
   public static class Operations {
     /** When true, accepts Operations HTTP 302 launch parameters (?token=...&partner_code=...). */
     private boolean enabled = false;
-    /** Operations backend base URL for server-to-server /api/v1/wallet/* calls. */
-    private String apiUrl = "https://operations.dpbossking.com";
-    /** Secret X-Internal-Key header sent server-to-server only (never sent to browser). */
+    /** Operations backend base URL from OPERATIONS_API_URL / OPS_API_URL in .env. */
+    private String apiUrl = "";
+    /** Secret X-Internal-Key header from INTERNAL_SERVICE_KEY / OPS_INTERNAL_KEY in .env. */
     private String internalKey = "";
     /** Registered game launchUrl where Operations redirects players. */
     private String launchUrl = "";

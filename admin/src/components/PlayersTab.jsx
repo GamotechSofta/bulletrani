@@ -16,7 +16,7 @@ export default function PlayersTab({
   const [createForm, setCreateForm] = useState({
     username: '',
     email: '',
-    password: 'pilot123',
+    password: '',
     role: 'player',
     balance: 5000
   });
@@ -34,7 +34,7 @@ export default function PlayersTab({
     const ok = await onCreateUser(createForm);
     if (ok) {
       setShowCreate(false);
-      setCreateForm({ username: '', email: '', password: 'pilot123', role: 'player', balance: 5000 });
+      setCreateForm({ username: '', email: '', password: '', role: 'player', balance: 5000 });
     }
   };
 
@@ -175,7 +175,7 @@ export default function PlayersTab({
                       </button>
                       <button
                         onClick={() => {
-                          const pw = window.prompt(`New password for ${u.username}:`, 'pilot123');
+                          const pw = window.prompt(`New password for ${u.username}:`);
                           if (pw) onResetPassword(u.id, pw);
                         }}
                         className="px-2 py-1 rounded-lg bg-sky-600/30 hover:bg-sky-600/50 text-sky-300 text-[11px] font-semibold"

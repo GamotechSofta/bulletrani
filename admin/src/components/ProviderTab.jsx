@@ -16,7 +16,7 @@ const statusStyle = {
 export default function ProviderTab({ token, apiBase, onAlert }) {
   const [form, setForm] = useState({
     enabled: false,
-    apiUrl: 'https://api.dpbossking.com/api/v1',
+    apiUrl: '',
     apiKey: '',
     tableId: 'bulletrani_main',
     gameCode: 'BULLETRANI'
@@ -274,7 +274,7 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
             <input
               value={form.apiUrl}
               onChange={(e) => setForm({ ...form, apiUrl: e.target.value })}
-              placeholder="https://api.dpbossking.com/api/v1"
+              placeholder="Set PROVIDER_API_URL in backend .env or enter URL"
               className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 text-xs text-white outline-none focus:border-red-500 font-mono"
             />
           </div>
@@ -352,8 +352,8 @@ export default function ProviderTab({ token, apiBase, onAlert }) {
       </div>
 
       <div className="text-[11px] text-gray-500 leading-relaxed px-1">
-        Operator create / enabled-games assignment still happens on the Provider platform admin
-        (<span className="text-gray-400">admin.dpbossking.com</span>). This panel configures the BulletRani game server side only.
+        Operator create / enabled-games assignment still happens on the Provider platform admin.
+        This panel configures the BulletRani game server side only (<code className="text-gray-400">GAME_SERVER_API_KEY</code> stays in backend <code className="text-gray-400">.env</code> or server storage).
       </div>
     </div>
   );

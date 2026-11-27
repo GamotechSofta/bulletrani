@@ -65,9 +65,11 @@ public class DataStore {
     // Always sync admin password from env so rotations take effect on restart
     ensureSeedAdmin("admin", "admin@bulletrani.local", adminPassword);
 
-    if (mongo.count(Query.query(Criteria.where("role").is("player")), User.class) == 0) {
-      createUserInternal("TopGunPilot", "pilot@aviator.local", "pilot123", 0, "player");
-      createUserInternal("LuckySky77", "sky77@aviator.local", "pilot123", 0, "player");
+    String demoPassword = firstEnv("DEMO_PLAYER_PASSWORD");
+    if (demoPassword != null && !demoPassword.isBlank()
+        && mongo.count(Query.query(Criteria.where("role").is("player")), User.class) == 0) {
+      createUserInternal("TopGunPilot", "pilot@aviator.local", demoPassword, 0, "player");
+      createUserInternal("LuckySky77", "sky77@aviator.local", demoPassword, 0, "player");
     }
   }
 
