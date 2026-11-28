@@ -5,11 +5,13 @@ import {
   IconMenu,
   IconPropeller
 } from './Icons';
+import RecentMultipliersBar from './RecentMultipliersBar';
 
 export default function RikshaCanvas({
   state,
   multiplier,
   countdownProgress,
+  history,
   vehicle = 'bike',
   onToggleSound,
   soundEnabled,
@@ -1542,18 +1544,74 @@ export default function RikshaCanvas({
           chestDestX, destChestEndY, chestDestW, (bikeHeight / 2) - destChestEndY
         );
 
-        // 2. Bottom-left static section (bikini bottom, rear seat, rear wheel, exhaust)
+        // 2. Bottom-left section split cleanly around hip/bikini-bottom wind-flutter box
+        const dressSrcX = Math.round(iw * 0.325);
+        const dressSrcY = hairCutY; // 0.355 * ih (right below hair cut)
+        const dressSrcW = hairCutX - dressSrcX;
+        const dressSrcH = Math.round(ih * 0.080); // covers bikini bottom & hip tie (0.355..0.435)
+        const dressEndY = dressSrcY + dressSrcH;
+        const destDressX = -bikeWidth / 2 + (dressSrcX / iw) * bikeWidth;
+        const destDressW = (dressSrcW / iw) * bikeWidth;
+        const destDressH = (dressSrcH / ih) * bikeHeight;
+        const destDressEndY = destHairCutY + destDressH;
+
+        // Left of dress box
         ctx.drawImage(
           img,
-          0, hairCutY, hairCutX, ih - hairCutY,
-          -bikeWidth / 2, destHairCutY, (hairCutX / iw) * bikeWidth, bikeHeight - (hairCutY / ih) * bikeHeight
+          0, hairCutY, dressSrcX, ih - hairCutY,
+          -bikeWidth / 2, destHairCutY, (dressSrcX / iw) * bikeWidth, bikeHeight - (hairCutY / ih) * bikeHeight
+        );
+        // Below dress box (rear seat, rear wheel, exhaust)
+        ctx.drawImage(
+          img,
+          dressSrcX, dressEndY, dressSrcW, ih - dressEndY,
+          destDressX, destDressEndY, destDressW, (bikeHeight / 2) - destDressEndY
         );
 
+        // 2b. Bikini bottom & lace edge wind flutter (anchored at right edge hairCutX)
+        const dressFreq = isFlying ? 13.5 + speedFactor * 5.5 : 6.8;
+        const dressAmp = (isFlying ? 4.2 + speedFactor * 2.2 : 2.4) * sceneScale;
+        const dressSlices = 10;
+        const dSliceSrcW = dressSrcW / dressSlices;
+        const dSliceDestW = destDressW / dressSlices;
+        for (let i = 0; i < dressSlices; i++) {
+          const sx = dressSrcX + i * dSliceSrcW;
+          const dx = destDressX + i * dSliceDestW;
+          const distRatio = (hairCutX - sx) / Math.max(1, dressSrcW);
+          const dy = Math.sin(nowSec * dressFreq + i * 0.38) * dressAmp * Math.pow(distRatio, 1.25);
+          ctx.drawImage(
+            img,
+            sx, dressSrcY, dSliceSrcW + 0.6, dressSrcH,
+            dx, destHairCutY + dy, dSliceDestW + 0.6, destDressH
+          );
+        }
+
+        // 2c. Fluttering red lace hip tie-strings streaming in the wind
+        const tieX = -bikeWidth * 0.115;
+        const tieY = -bikeHeight * 0.115;
+        const tieLen = (isFlying ? 22 + speedFactor * 10 : 14) * sceneScale;
+        ctx.save();
+        ctx.lineCap = 'round';
+        [
+          { yOff: 0, phase: 0, color: '#e11d48', width: 1.5 },
+          { yOff: 2.2 * sceneScale, phase: 1.3, color: '#be123c', width: 1.2 }
+        ].forEach(({ yOff, phase, color, width }) => {
+          const wA = Math.sin(nowSec * (dressFreq + 2) + phase) * (isFlying ? 5.5 : 3.0) * sceneScale;
+          const wB = Math.cos(nowSec * (dressFreq + 3.5) + phase) * (isFlying ? 7.5 : 4.2) * sceneScale;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(1, width * sceneScale);
+          ctx.beginPath();
+          ctx.moveTo(tieX, tieY + yOff);
+          ctx.quadraticCurveTo(tieX - tieLen * 0.5, tieY + yOff + wA, tieX - tieLen, tieY + yOff + 2 * sceneScale + wB);
+          ctx.stroke();
+        });
+        ctx.restore();
+
         // 3. Seamless monotonic sin^2 bell-curve bounce on chest (never inverts or crushes slices)
-        const bounceFreq = isFlying ? 8.5 : 5.2;
+        const bounceFreq = isFlying ? 15.5 + speedFactor * 5.0 : 8.5;
         const maxSafeAmp = chestDestH * 0.28; // guaranteed monotonic (dyBot > dyTop) for sin^2(pi*t)
-        const bounceAmp = Math.min(maxSafeAmp, (isFlying ? 6.2 : 3.8) * sceneScale);
-        const rawWave = Math.sin(nowSec * bounceFreq) + 0.25 * Math.sin(nowSec * bounceFreq * 2 - 0.5);
+        const bounceAmp = Math.min(maxSafeAmp, (isFlying ? 8.5 : 5.4) * sceneScale);
+        const rawWave = Math.sin(nowSec * bounceFreq) + 0.35 * Math.sin(nowSec * bounceFreq * 2 - 0.6);
         const bounceWave = Math.max(-maxSafeAmp, Math.min(maxSafeAmp, rawWave * bounceAmp * 0.85));
         const cSlices = 14;
         const cSliceSrcH = chestSrcH / cSlices;
@@ -1568,7 +1626,7 @@ export default function RikshaCanvas({
           const w1 = s1 * s1;
           const dy0 = bounceWave * w0;
           const dy1 = bounceWave * w1;
-          const dxMid = Math.max(0, -bounceWave * 0.35) * ((w0 + w1) * 0.5);
+          const dxMid = bounceWave * -0.22 * ((w0 + w1) * 0.5);
           const sy = chestSrcY + j * cSliceSrcH;
           const dyTop = chestDestY + j * cSliceDestH + dy0;
           const dyBot = chestDestY + (j + 1) * cSliceDestH + dy1;
@@ -1579,12 +1637,12 @@ export default function RikshaCanvas({
           );
         }
 
-        // 4. Sweeping wind-wave on flowing hair (low spatial freq so entire plume ripples cleanly)
+        // 4. Sweeping multi-harmonic wind-wave on flowing hair
         const hairStartX = Math.round(iw * 0.285);
         const hairSpanW = hairCutX - hairStartX;
-        const hairFreq = isFlying ? 10.5 + speedFactor * 5 : 5.5;
-        const hairAmp = (isFlying ? 12 + speedFactor * 6 : 7.5) * sceneScale;
-        const hairSlices = 20;
+        const hairFreq = isFlying ? 12.0 + speedFactor * 6.0 : 6.5;
+        const hairAmp = (isFlying ? 14.0 + speedFactor * 7.5 : 8.5) * sceneScale;
+        const hairSlices = 22;
         const hSliceSrcW = hairSpanW / hairSlices;
         const hSliceDestW = ((hairSpanW / iw) * bikeWidth) / hairSlices;
         const hDestH = (hairCutY / ih) * bikeHeight;
@@ -1594,64 +1652,147 @@ export default function RikshaCanvas({
           const sx = hairStartX + i * hSliceSrcW;
           const dx = destHairStartX + i * hSliceDestW;
           const distRatio = (hairCutX - sx) / hairSpanW;
-          const dy = Math.sin(nowSec * hairFreq + i * 0.16) * hairAmp * Math.pow(distRatio, 1.15);
+          const wave1 = Math.sin(nowSec * hairFreq + i * 0.26);
+          const wave2 = Math.sin(nowSec * hairFreq * 1.7 + i * 0.42) * 0.35;
+          const dy = (wave1 + wave2) * hairAmp * Math.pow(distRatio, 1.1);
+          const dxStretch = Math.cos(nowSec * hairFreq + i * 0.24) * (hairAmp * 0.18) * distRatio;
           ctx.drawImage(
             img,
             sx, 0, hSliceSrcW + 0.6, hairCutY,
-            dx, -bikeHeight / 2 + dy, hSliceDestW + 0.6, hDestH
+            dx + dxStretch, -bikeHeight / 2 + dy, hSliceDestW + 0.8, hDestH
           );
         }
+
+        // 4b. Trailing wind-blown hair wisps beyond the tip
+        ctx.save();
+        ctx.lineCap = 'round';
+        [
+          { yRatio: -0.34, len: 18, phase: 0.2, color: 'rgba(42, 18, 7, 0.72)' },
+          { yRatio: -0.27, len: 22, phase: 1.4, color: 'rgba(92, 45, 22, 0.55)' },
+          { yRatio: -0.21, len: 15, phase: 2.5, color: 'rgba(42, 18, 7, 0.65)' }
+        ].forEach(({ yRatio, len, phase, color }) => {
+          const tipX = destHairStartX + 4 * sceneScale;
+          const tipY = bikeHeight * yRatio;
+          const wispLen = (len + speedFactor * 10) * sceneScale;
+          const w1 = Math.sin(nowSec * hairFreq + phase) * hairAmp * 0.65;
+          const w2 = Math.cos(nowSec * hairFreq * 1.3 + phase) * hairAmp * 0.85;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(1.1, 1.6 * sceneScale);
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY + w1 * 0.35);
+          ctx.quadraticCurveTo(tipX - wispLen * 0.5, tipY + w1, tipX - wispLen, tipY + w2);
+          ctx.stroke();
+        });
+        ctx.restore();
       } catch (err) {
         console.error('Bike sprite animation error:', err);
         ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
       }
 
-      // 5. Subtle wheel motion-blur & tire-contact road dust (clipped above rear exhaust)
-      const wheelSpin = roadOffsetRef.current * 0.14;
-      const wheelPositions = [
-        { wx: -bikeWidth * 0.218, wy: bikeHeight * 0.185, isRear: true },
-        { wx: bikeWidth * 0.275, wy: bikeHeight * 0.185, isRear: false }
-      ];
-      const rimR = bikeWidth * 0.088;
+      // 5. Photorealistic spinning wheels (rotates actual spoked wheel pixels, keeping fork/shock/exhaust stationary)
+      const wheelSpin = roadOffsetRef.current * 0.22;
+      const scaleX = bikeWidth / iw;
+      const scaleY = bikeHeight / ih;
 
-      wheelPositions.forEach(({ wx, wy, isRear }) => {
+      const wheels = [
+        {
+          // Rear wheel: center ~(189, 297) in 675x450
+          srcX: 189,
+          srcY: 297,
+          srcRimR: 46,
+          exhaustCutY: -bikeHeight / 2 + 313 * scaleY,
+          occluder: { x1: 163, y1: 250, x2: 173, y2: 313, halfW: 8 },
+          isRear: true
+        },
+        {
+          // Front wheel: center ~(520.5, 294.5) in 675x450
+          srcX: 520.5,
+          srcY: 294.5,
+          srcRimR: 49,
+          exhaustCutY: null,
+          occluder: { x1: 503, y1: 245, x2: 521, y2: 296, halfW: 9 },
+          isRear: false
+        }
+      ];
+
+      wheels.forEach(({ srcX, srcY, srcRimR, exhaustCutY, occluder, isRear }) => {
+        const destX = -bikeWidth / 2 + srcX * scaleX;
+        const destY = -bikeHeight / 2 + srcY * scaleY;
+        const destRimR = srcRimR * scaleX;
+
+        // 5a. Draw rotated inner spoked wheel from sprite
         ctx.save();
-        if (isRear) {
+        if (exhaustCutY !== null) {
           ctx.beginPath();
-          ctx.rect(-bikeWidth * 0.5, -bikeHeight * 0.5, bikeWidth, bikeHeight * 0.72);
+          ctx.rect(-bikeWidth * 0.5, -bikeHeight * 0.5, bikeWidth, exhaustCutY + bikeHeight * 0.5);
           ctx.clip();
         }
-        ctx.translate(wx, wy);
-        ctx.rotate(wheelSpin);
+        ctx.beginPath();
+        ctx.arc(destX, destY, destRimR, 0, Math.PI * 2);
+        ctx.clip();
 
-        const blurAlpha = isFlying ? 0.12 + speedFactor * 0.12 : 0.04;
-        ctx.strokeStyle = `rgba(226, 232, 240, ${blurAlpha})`;
-        ctx.lineWidth = Math.max(1.5, 2.5 * sceneScale);
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.arc(0, 0, rimR * 0.72, 0, Math.PI * 0.25);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, rimR * 0.72, Math.PI, Math.PI * 1.25);
-        ctx.stroke();
+        ctx.translate(destX, destY);
+        ctx.rotate(wheelSpin);
+        ctx.drawImage(
+          img,
+          srcX - srcRimR, srcY - srcRimR, srcRimR * 2, srcRimR * 2,
+          -destRimR, -destRimR, destRimR * 2, destRimR * 2
+        );
+
+        // Subtle high-speed radial sheen when flying
+        if (isFlying && speedFactor > 0.05) {
+          const sheenGrad = ctx.createRadialGradient(0, 0, destRimR * 0.25, 0, 0, destRimR);
+          sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+          sheenGrad.addColorStop(0.65, `rgba(226, 232, 240, ${0.14 * speedFactor})`);
+          sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = sheenGrad;
+          ctx.beginPath();
+          ctx.arc(0, 0, destRimR, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.restore();
 
+        // 5b. Restore stationary fork leg (front) or rear shock (rear) over the spinning spokes
+        const ox1 = -bikeWidth / 2 + occluder.x1 * scaleX;
+        const oy1 = -bikeHeight / 2 + occluder.y1 * scaleY;
+        const ox2 = -bikeWidth / 2 + occluder.x2 * scaleX;
+        const oy2 = -bikeHeight / 2 + occluder.y2 * scaleY;
+        const dxO = ox2 - ox1;
+        const dyO = oy2 - oy1;
+        const lenO = Math.hypot(dxO, dyO);
+        const angO = Math.atan2(dyO, dxO);
+        const hw = occluder.halfW * scaleX;
+
+        ctx.save();
+        ctx.translate(ox1, oy1);
+        ctx.rotate(angO);
+        ctx.beginPath();
+        ctx.rect(-2 * scaleX, -hw, lenO + 4 * scaleX, hw * 2);
+        ctx.clip();
+        ctx.rotate(-angO);
+        ctx.translate(-ox1, -oy1);
+        ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+        ctx.restore();
+
+        // 5c. Tire-contact road dust when flying
         if (isFlying) {
           ctx.save();
           const kickLen = (14 + speedFactor * 22) * sceneScale;
-          const gy = bikeHeight * 0.34;
-          const kickGrad = ctx.createLinearGradient(wx, gy, wx - kickLen, gy);
+          const gy = destY + destRimR * 1.48;
+          const kickGrad = ctx.createLinearGradient(destX, gy, destX - kickLen, gy);
           kickGrad.addColorStop(0, `rgba(203, 213, 225, ${0.14 + speedFactor * 0.12})`);
           kickGrad.addColorStop(1, 'rgba(203, 213, 225, 0)');
           ctx.strokeStyle = kickGrad;
           ctx.lineWidth = Math.max(1.2, 2 * sceneScale);
           ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(wx - 4 * sceneScale, gy);
-          ctx.lineTo(wx - kickLen, gy - 1.5 * sceneScale);
+          ctx.moveTo(destX - 4 * sceneScale, gy);
+          ctx.lineTo(destX - kickLen, gy - 1.5 * sceneScale);
           ctx.stroke();
           ctx.restore();
         }
+
+        void isRear;
       });
 
       ctx.restore();
@@ -3051,27 +3192,33 @@ export default function RikshaCanvas({
     <div className="relative w-full h-full min-h-[160px] rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.5)] select-none border border-white/10 bg-[#0a1520]">
       <canvas ref={canvasRef} className="w-full h-full block" />
 
-      {/* TOP-RIGHT: Sound / Fullscreen / Menu */}
-      <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-20">
-        <button
-          onClick={onToggleSound}
-          title={soundEnabled ? 'Mute' : 'Unmute'}
-          className={glassBtn}
-        >
-          {soundEnabled ? (
-            <IconVolumeUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-          ) : (
-            <IconVolumeMute className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
-          )}
-        </button>
+      {/* TOP SCENE BAR: Recent Multipliers (left/center) + Sound & Menu (right) */}
+      <div className="absolute top-2 inset-x-2 sm:top-3 sm:inset-x-3 flex items-center justify-between gap-2 z-20 pointer-events-none">
+        <div className="pointer-events-auto min-w-0 flex-1 max-w-3xl">
+          <RecentMultipliersBar history={history} />
+        </div>
 
-        <button
-          onClick={onOpenMenu}
-          title="Menu"
-          className={glassBtn}
-        >
-          <IconMenu className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-        </button>
+        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            onClick={onToggleSound}
+            title={soundEnabled ? 'Mute' : 'Unmute'}
+            className={glassBtn}
+          >
+            {soundEnabled ? (
+              <IconVolumeUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            ) : (
+              <IconVolumeMute className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
+            )}
+          </button>
+
+          <button
+            onClick={onOpenMenu}
+            title="Menu"
+            className={glassBtn}
+          >
+            <IconMenu className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+          </button>
+        </div>
       </div>
 
       {/* Dark wash + sunburst — same look for waiting loader and crash HUD */}

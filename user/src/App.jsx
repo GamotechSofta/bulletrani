@@ -567,7 +567,6 @@ export default function App() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/[0.03] to-transparent z-0" />
 
       <TopGunHeader
-        history={recentHistory}
         username={user?.username || 'TopGunPilot'}
         balance={user ? user.balance : 5895.75}
         currency={activeCurrency}
@@ -593,6 +592,7 @@ export default function App() {
               state={gameState}
               multiplier={multiplier}
               countdownProgress={countdownProgress}
+              history={recentHistory}
               vehicle={vehicle}
               onToggleSound={toggleAllAudio}
               soundEnabled={soundEnabled || musicEnabled}
