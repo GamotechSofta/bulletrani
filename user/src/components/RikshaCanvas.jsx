@@ -32,6 +32,8 @@ export default function RikshaCanvas({
   const farOffsetRef = useRef(0);
   const skyOffsetRef = useRef(0);
   const engineVibeRef = useRef(0);
+  const wheelAngleRef = useRef(0);
+  const vehicleXRef = useRef(null);
   const starsRef = useRef([]);
   const exhaustRef = useRef([]);
   const exhaustTimerRef = useRef(0);
@@ -120,206 +122,228 @@ export default function RikshaCanvas({
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
 
+    let cancelled = false;
     const render = () => {
-      const state = stateRef.current;
-      const multiplier = multiplierRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height;
-      if (width < 2 || height < 2) {
-        animFrameRef.current = requestAnimationFrame(render);
-        return;
-      }
+      try {
+        const state = stateRef.current;
+        const multiplier = multiplierRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        if (width < 2 || height < 2) {
+          return;
+        }
 
-      // Full-frame opaque sky fill is drawn next — skip clearRect flash
-      // --- 1. DETERMINE SPEED & PROGRESSION ---
-      let baseSpeed = 0;
-      if (state === 'FLYING') {
-        baseSpeed = Math.min(32, 6.0 + Math.log(Math.max(1, multiplier)) * 6.5);
-      } else if (state === 'WAITING') {
-        baseSpeed = 2.2; // Cruising forward waiting for round
-      } else {
-        baseSpeed = 0.4;
-      }
+        // Full-frame opaque sky fill is drawn next — skip clearRect flash
+        // --- 1. DETERMINE SPEED & PROGRESSION ---
+        let baseSpeed = 0;
+        if (state === 'FLYING') {
+          baseSpeed = Math.min(32, 6.0 + Math.log(Math.max(1, multiplier)) * 6.5);
+        } else if (state === 'WAITING') {
+          baseSpeed = 2.2; // Cruising forward waiting for round
+        } else {
+          baseSpeed = 0.4;
+        }
 
-      // Parallax update (All background layers move to the LEFT)
-      roadOffsetRef.current = (roadOffsetRef.current + baseSpeed) % 100000;
-      midgroundOffsetRef.current = (midgroundOffsetRef.current + baseSpeed * 0.45) % 100000;
-      farOffsetRef.current = (farOffsetRef.current + baseSpeed * 0.15) % 100000;
-      skyOffsetRef.current = (skyOffsetRef.current + baseSpeed * 0.05) % 100000;
+        // Frame delta time (real time)
+        const now = performance.now();
+        if (!lastFrameTimeRef.current) lastFrameTimeRef.current = now;
+        const dt = Math.min(0.05, (now - lastFrameTimeRef.current) / 1000);
+        lastFrameTimeRef.current = now;
+        const dtScale = dt * 60;
 
-      // Frame delta time (real time)
-      const now = performance.now();
-      if (!lastFrameTimeRef.current) lastFrameTimeRef.current = now;
-      const dt = Math.min(0.05, (now - lastFrameTimeRef.current) / 1000);
-      lastFrameTimeRef.current = now;
+        // Parallax update (All background layers move to the LEFT at frame-rate-normalized speed)
+        roadOffsetRef.current = (roadOffsetRef.current + baseSpeed * dtScale) % 100000;
+        midgroundOffsetRef.current = (midgroundOffsetRef.current + baseSpeed * dtScale * 0.45) % 100000;
+        farOffsetRef.current = (farOffsetRef.current + baseSpeed * dtScale * 0.15) % 100000;
+        skyOffsetRef.current = (skyOffsetRef.current + baseSpeed * dtScale * 0.05) % 100000;
 
-      // Smooth, subtle road cruise feel (no jittery shaking)
-      engineVibeRef.current += dt * (state === 'FLYING' ? 5.5 : 2.5);
-      const thumpingVibe = Math.sin(engineVibeRef.current) * (state === 'FLYING' ? 0.55 : 0.25);
+        // Scale scene for small/mobile canvases so bike, buildings & clouds don't dominate
+        const sceneScale = Math.max(0.42, Math.min(1, Math.min(height / 420, width / 780)));
 
-      const currentMult = state === 'FLYING' || state === 'CRASHED' ? multiplier : 1.0;
+        // Smooth clockwise wheel rotation locked to road motion (clamped below spoke-aliasing threshold)
+        const wheelDelta = (baseSpeed * dtScale) / Math.max(22, 40 * sceneScale);
+        wheelAngleRef.current = (wheelAngleRef.current + Math.min(0.145, wheelDelta)) % (Math.PI * 2);
 
-      // Day ↔ night advances on real time (not bike speed)
-      // Full cycle ~40s — longer, smoother day → evening → night
-      if (baseSpeed > 0.5) {
-        dayPhaseRef.current = (dayPhaseRef.current + dt / 40) % 1;
-      }
-      const dayCycle = getDayCycleFromPhase(dayPhaseRef.current);
+        // Smooth, subtle road cruise feel (keep tires grounded, no jittery shaking)
+        engineVibeRef.current += dt * (state === 'FLYING' ? 5.5 : 2.5);
+        const thumpingVibe = Math.sin(engineVibeRef.current) * (state === 'FLYING' ? 0.55 : 0.25);
 
-      // Scale scene for small/mobile canvases so bike, buildings & clouds don't dominate
-      const sceneScale = Math.max(0.42, Math.min(1, Math.min(height / 420, width / 780)));
+        const currentMult = state === 'FLYING' || state === 'CRASHED' ? multiplier : 1.0;
 
-      // --- 2. SKY & CLOUDS ---
-      drawModernSky(ctx, width, height, skyOffsetRef.current, dayCycle, sceneScale);
+        // Day ↔ night advances on real time (not bike speed)
+        // Full cycle ~40s — longer, smoother day → evening → night
+        if (baseSpeed > 0.5) {
+          dayPhaseRef.current = (dayPhaseRef.current + dt / 40) % 1;
+        }
+        const dayCycle = getDayCycleFromPhase(dayPhaseRef.current);
 
-      // --- 3. FAR BACKGROUND (distant coastal headland hills) ---
-      const roadTop = height * (height < 260 ? 0.50 : 0.54);
-      const seaTop = roadTop - Math.max(58, 98 * sceneScale);
-      drawFarSilhouettes(ctx, width, seaTop + 4 * sceneScale, dayCycle, farOffsetRef.current, sceneScale);
+        // --- 2. SKY & CLOUDS ---
+        drawModernSky(ctx, width, height, skyOffsetRef.current, dayCycle, sceneScale);
 
-      // --- 4. MIDGROUND SEASIDE COAST (ocean, waves, boats, sandy shore & palms) ---
-      drawSeasideCoast(ctx, width, roadTop, seaTop, dayCycle, midgroundOffsetRef.current, farOffsetRef.current, sceneScale);
+        // --- 3. FAR BACKGROUND (distant coastal headland hills) ---
+        const roadTop = height * (height < 260 ? 0.50 : 0.54);
+        const seaTop = roadTop - Math.max(58, 98 * sceneScale);
+        drawFarSilhouettes(ctx, width, seaTop + 4 * sceneScale, dayCycle, farOffsetRef.current, sceneScale);
 
-      // --- 5. FOREGROUND ROAD ---
-      const roadHeight = height - roadTop;
-      const curbH = Math.max(6, 11 * sceneScale);
-      const night = dayCycle.night;
+        // --- 4. MIDGROUND SEASIDE COAST (ocean, waves, boats, sandy shore & palms) ---
+        drawSeasideCoast(ctx, width, roadTop, seaTop, dayCycle, midgroundOffsetRef.current, farOffsetRef.current, sceneScale);
 
-      ctx.fillStyle = lerpHex('#b8c0c8', '#121820', night);
-      ctx.fillRect(0, roadTop, width, curbH);
-      ctx.fillStyle = lerpHex('#9aa4ae', '#0a0e14', night);
-      ctx.fillRect(0, roadTop + curbH - 2, width, 2);
-      // Thin curb highlight — warm by day, cool edge at night
-      if (night > 0.35) {
-        ctx.fillStyle = `rgba(90, 120, 180, ${0.12 * night})`;
-        ctx.fillRect(0, roadTop, width, 1.5);
-      }
+        // --- 5. FOREGROUND ROAD ---
+        const roadHeight = height - roadTop;
+        const curbH = Math.max(6, 11 * sceneScale);
+        const night = dayCycle.night;
 
-      const roadGrad = ctx.createLinearGradient(0, roadTop + curbH, 0, height);
-      roadGrad.addColorStop(0, lerpHex('#5c6674', '#12161e', night));
-      roadGrad.addColorStop(0.35, lerpHex('#4a5360', '#0c1016', night));
-      roadGrad.addColorStop(1, lerpHex('#2b323d', '#05070b', night));
-      ctx.fillStyle = roadGrad;
-      ctx.fillRect(0, roadTop + curbH, width, roadHeight - curbH);
+        ctx.fillStyle = lerpHex('#b8c0c8', '#121820', night);
+        ctx.fillRect(0, roadTop, width, curbH);
+        ctx.fillStyle = lerpHex('#9aa4ae', '#0a0e14', night);
+        ctx.fillRect(0, roadTop + curbH - 2, width, 2);
+        // Thin curb highlight — warm by day, cool edge at night
+        if (night > 0.35) {
+          ctx.fillStyle = `rgba(90, 120, 180, ${0.12 * night})`;
+          ctx.fillRect(0, roadTop, width, 1.5);
+        }
 
-      // Subtle tire-wear tracks & asphalt shoulder edge lines for realism
-      ctx.fillStyle = `rgba(0, 0, 0, ${0.1 + night * 0.14})`;
-      ctx.fillRect(0, roadTop + roadHeight * 0.58, width, Math.max(10, 18 * sceneScale));
-      ctx.fillStyle = night > 0.5
-        ? `rgba(210, 170, 90, ${0.22})`
-        : `rgba(245, 200, 90, ${0.55 - night * 0.3})`;
-      ctx.fillRect(0, roadTop + curbH + Math.max(3, 5 * sceneScale), width, Math.max(1.5, 2.5 * sceneScale));
+        const roadGrad = ctx.createLinearGradient(0, roadTop + curbH, 0, height);
+        roadGrad.addColorStop(0, lerpHex('#5c6674', '#12161e', night));
+        roadGrad.addColorStop(0.35, lerpHex('#4a5360', '#0c1016', night));
+        roadGrad.addColorStop(1, lerpHex('#2b323d', '#05070b', night));
+        ctx.fillStyle = roadGrad;
+        ctx.fillRect(0, roadTop + curbH, width, roadHeight - curbH);
 
-      // Scrolling asphalt aggregate speckles
-      const speckStep = Math.max(48, 68 * sceneScale);
-      const speckShift = roadOffsetRef.current % speckStep;
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.035 * (1 - night * 0.6)})`;
-      for (let x = -speckStep - speckShift; x < width + speckStep; x += speckStep) {
-        ctx.fillRect(x + 12 * sceneScale, roadTop + roadHeight * 0.24, 3 * sceneScale, 1.5 * sceneScale);
-        ctx.fillRect(x + 36 * sceneScale, roadTop + roadHeight * 0.72, 4 * sceneScale, 1.5 * sceneScale);
-      }
+        // Subtle tire-wear tracks & asphalt shoulder edge lines for realism
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.1 + night * 0.14})`;
+        ctx.fillRect(0, roadTop + roadHeight * 0.58, width, Math.max(10, 18 * sceneScale));
+        ctx.fillStyle = night > 0.5
+          ? `rgba(210, 170, 90, ${0.22})`
+          : `rgba(245, 200, 90, ${0.55 - night * 0.3})`;
+        ctx.fillRect(0, roadTop + curbH + Math.max(3, 5 * sceneScale), width, Math.max(1.5, 2.5 * sceneScale));
 
-      const edgeGrad = ctx.createLinearGradient(0, roadTop + curbH, 0, height);
-      edgeGrad.addColorStop(0, 'rgba(0,0,0,0)');
-      edgeGrad.addColorStop(1, `rgba(0,0,0,${0.24 + night * 0.38})`);
-      ctx.fillStyle = edgeGrad;
-      ctx.fillRect(0, roadTop + curbH, width, roadHeight - curbH);
+        // Scrolling asphalt aggregate speckles
+        const speckStep = Math.max(48, 68 * sceneScale);
+        const speckShift = roadOffsetRef.current % speckStep;
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.035 * (1 - night * 0.6)})`;
+        for (let x = -speckStep - speckShift; x < width + speckStep; x += speckStep) {
+          ctx.fillRect(x + 12 * sceneScale, roadTop + roadHeight * 0.24, 3 * sceneScale, 1.5 * sceneScale);
+          ctx.fillRect(x + 36 * sceneScale, roadTop + roadHeight * 0.72, 4 * sceneScale, 1.5 * sceneScale);
+        }
 
-      // Lane dashes — larger highway proportions
-      const stripeA = 0.95 - night * 0.72;
-      ctx.fillStyle = night > 0.5
-        ? `rgba(160, 185, 230, ${stripeA})`
-        : `rgba(220, 230, 245, ${stripeA})`;
-      const stripeY = roadTop + roadHeight * 0.48;
-      const stripeWidth = Math.max(38, 72 * sceneScale);
-      const stripeGap = Math.max(24, 42 * sceneScale);
-      const stripeH = Math.max(5, 9 * sceneScale);
-      const totalStripeStep = stripeWidth + stripeGap;
-      const stripeShift = roadOffsetRef.current % totalStripeStep;
+        const edgeGrad = ctx.createLinearGradient(0, roadTop + curbH, 0, height);
+        edgeGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        edgeGrad.addColorStop(1, `rgba(0,0,0,${0.24 + night * 0.38})`);
+        ctx.fillStyle = edgeGrad;
+        ctx.fillRect(0, roadTop + curbH, width, roadHeight - curbH);
 
-      for (let x = -totalStripeStep - stripeShift; x < width + totalStripeStep; x += totalStripeStep) {
-        ctx.fillRect(x, stripeY, stripeWidth, stripeH);
-      }
+        // Lane dashes — larger highway proportions
+        const stripeA = 0.95 - night * 0.72;
+        ctx.fillStyle = night > 0.5
+          ? `rgba(160, 185, 230, ${stripeA})`
+          : `rgba(220, 230, 245, ${stripeA})`;
+        const stripeY = roadTop + roadHeight * 0.48;
+        const stripeWidth = Math.max(38, 72 * sceneScale);
+        const stripeGap = Math.max(24, 42 * sceneScale);
+        const stripeH = Math.max(5, 9 * sceneScale);
+        const totalStripeStep = stripeWidth + stripeGap;
+        const stripeShift = roadOffsetRef.current % totalStripeStep;
 
-      // Reflective cat's eyes along the road center & highway milestone posts
-      drawRoadProps(ctx, width, roadTop, curbH, roadHeight, dayCycle, roadOffsetRef.current, midgroundOffsetRef.current, sceneScale);
+        for (let x = -totalStripeStep - stripeShift; x < width + totalStripeStep; x += totalStripeStep) {
+          ctx.fillRect(x, stripeY, stripeWidth, stripeH);
+        }
 
-      // Speed streaks & celebratory motes when FLYING
-      if (state === 'FLYING') {
-        drawSpeedAtmosphere(ctx, width, height, roadTop, roadHeight, multiplier, now, sceneScale);
-      }
+        // Reflective cat's eyes along the road center & highway milestone posts
+        drawRoadProps(ctx, width, roadTop, curbH, roadHeight, dayCycle, roadOffsetRef.current, midgroundOffsetRef.current, sceneScale);
 
-      // Streetlights along the curb (glow on road, poles in front of asphalt)
-      drawStreetlights(ctx, width, roadTop, curbH, roadHeight, dayCycle, midgroundOffsetRef.current, sceneScale);
+        // Speed streaks & celebratory motes when FLYING
+        if (state === 'FLYING') {
+          drawSpeedAtmosphere(ctx, width, height, roadTop, roadHeight, multiplier, now, sceneScale);
+        }
 
-      // --- 6. VEHICLE (keep left like reference) ---
-      let vehicleX = Math.max(70 * sceneScale, width * 0.14);
-      if (state === 'FLYING') {
-        const progress = Math.min(1, Math.log(multiplier) / Math.log(25));
-        vehicleX = Math.max(70 * sceneScale, width * 0.14) + (width * 0.28) * progress;
-      }
+        // Streetlights along the curb (glow on road, poles in front of asphalt)
+        drawStreetlights(ctx, width, roadTop, curbH, roadHeight, dayCycle, midgroundOffsetRef.current, sceneScale);
 
-      const roadBaseline = roadTop + roadHeight * 0.46;
-      const vehicleY = roadBaseline + thumpingVibe * sceneScale;
+        // --- 6. VEHICLE (smooth forward launch + cruising motion) ---
+        const baseVehicleX = Math.max(70 * sceneScale, width * 0.14);
+        let targetVehicleX = baseVehicleX + Math.sin(now * 0.0016) * 3.5 * sceneScale;
+        if (state === 'FLYING') {
+          const launchCurve = 1 - Math.exp(-Math.max(0, multiplier - 1) * 0.85);
+          const logCurve = Math.min(1, Math.log(Math.max(1, multiplier)) / Math.log(25));
+          const progress = Math.min(1, 0.55 * launchCurve + 0.45 * logCurve);
+          targetVehicleX = baseVehicleX + (width * 0.30) * progress + Math.sin(now * 0.0022) * 5 * sceneScale;
+        }
+        if (vehicleXRef.current == null || state === 'CRASHED') {
+          vehicleXRef.current = targetVehicleX;
+        } else {
+          vehicleXRef.current += (targetVehicleX - vehicleXRef.current) * Math.min(1, dt * 5.0);
+        }
+        const vehicleX = vehicleXRef.current;
 
-      if (state === 'FLYING') {
-        lastVehicleRef.current = { x: vehicleX, y: vehicleY };
-        crashRef.current.seeded = false;
-      }
+        const roadBaseline = roadTop + roadHeight * 0.46;
+        const vehicleY = roadBaseline + thumpingVibe * sceneScale;
 
-      if (state === 'FLYING' && multiplier > 1.0) {
-        drawAviatorSpeedCurve(ctx, width, height, roadTop, vehicleX, vehicleY, currentMult, sceneScale);
-      }
+        if (state === 'FLYING') {
+          lastVehicleRef.current = { x: vehicleX, y: vehicleY };
+          crashRef.current.seeded = false;
+        }
 
-      if (state === 'CRASHED') {
-        exhaustRef.current = [];
-        seedCrashIfNeeded(vehicleX, vehicleY, multiplier, sceneScale);
-        drawCrashSequence(ctx, width, height, roadTop, sceneScale, currentMult);
-      } else {
-        updateAndDrawExhaust(ctx, vehicleX, vehicleY, state, currentMult, dt, baseSpeed, sceneScale);
-        drawHeadlightBeam(ctx, vehicleX, vehicleY, dayCycle, state, currentMult, sceneScale);
-        drawRoyalEnfield(ctx, vehicleX, vehicleY, currentMult, state, multiplier, sceneScale);
-      }
+        if (state === 'FLYING' && multiplier > 1.0) {
+          drawAviatorSpeedCurve(ctx, width, height, roadTop, vehicleX, vehicleY, currentMult, sceneScale);
+        }
 
-      // Color grades
-      if (night < 0.85) {
-        const dayKeep = Math.max(0, 1 - night) * (1 - dayCycle.golden * 0.65);
-        if (dayKeep > 0.02) {
-          const grade = ctx.createLinearGradient(0, 0, 0, height);
-          const ga = dayKeep * 0.1;
-          grade.addColorStop(0, `rgba(30, 70, 120, ${ga * 0.4})`);
-          grade.addColorStop(0.5, `rgba(20, 45, 80, ${ga * 0.12})`);
-          grade.addColorStop(1, `rgba(15, 30, 50, ${ga * 0.35})`);
-          ctx.fillStyle = grade;
+        if (state === 'CRASHED') {
+          exhaustRef.current = [];
+          seedCrashIfNeeded(vehicleX, vehicleY, multiplier, sceneScale);
+          drawCrashSequence(ctx, width, height, roadTop, sceneScale, currentMult);
+        } else {
+          updateAndDrawExhaust(ctx, vehicleX, vehicleY, state, currentMult, dt, baseSpeed, sceneScale);
+          drawHeadlightBeam(ctx, vehicleX, vehicleY, dayCycle, state, currentMult, sceneScale);
+          drawRoyalEnfield(ctx, vehicleX, vehicleY, currentMult, state, multiplier, sceneScale);
+        }
+
+        // Color grades
+        if (night < 0.85) {
+          const dayKeep = Math.max(0, 1 - night) * (1 - dayCycle.golden * 0.65);
+          if (dayKeep > 0.02) {
+            const grade = ctx.createLinearGradient(0, 0, 0, height);
+            const ga = dayKeep * 0.1;
+            grade.addColorStop(0, `rgba(30, 70, 120, ${ga * 0.4})`);
+            grade.addColorStop(0.5, `rgba(20, 45, 80, ${ga * 0.12})`);
+            grade.addColorStop(1, `rgba(15, 30, 50, ${ga * 0.35})`);
+            ctx.fillStyle = grade;
+            ctx.fillRect(0, 0, width, height);
+          }
+          if (dayCycle.golden > 0.05) {
+            const warm = ctx.createLinearGradient(0, 0, 0, height);
+            const wa = dayCycle.golden * (1 - night * 0.5) * 0.22;
+            warm.addColorStop(0, `rgba(80, 40, 90, ${wa * 0.25})`);
+            warm.addColorStop(0.55, `rgba(180, 90, 50, ${wa * 0.2})`);
+            warm.addColorStop(1, `rgba(200, 100, 40, ${wa * 0.35})`);
+            ctx.fillStyle = warm;
+            ctx.fillRect(0, 0, width, height);
+          }
+        }
+        // Night mood — light vignette only (keep scene readable)
+        if (night > 0.3) {
+          const na = (night - 0.3) / 0.7;
+          const vig = ctx.createRadialGradient(width * 0.5, height * 0.38, height * 0.2, width * 0.5, height * 0.5, height * 0.95);
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, `rgba(4, 8, 16, ${0.28 * na})`);
+          ctx.fillStyle = vig;
           ctx.fillRect(0, 0, width, height);
         }
-        if (dayCycle.golden > 0.05) {
-          const warm = ctx.createLinearGradient(0, 0, 0, height);
-          const wa = dayCycle.golden * (1 - night * 0.5) * 0.22;
-          warm.addColorStop(0, `rgba(80, 40, 90, ${wa * 0.25})`);
-          warm.addColorStop(0.55, `rgba(180, 90, 50, ${wa * 0.2})`);
-          warm.addColorStop(1, `rgba(200, 100, 40, ${wa * 0.35})`);
-          ctx.fillStyle = warm;
-          ctx.fillRect(0, 0, width, height);
+
+      } catch (err) {
+        console.error('Canvas render error:', err);
+      } finally {
+        if (!cancelled) {
+          animFrameRef.current = requestAnimationFrame(render);
         }
       }
-      // Night mood — light vignette only (keep scene readable)
-      if (night > 0.3) {
-        const na = (night - 0.3) / 0.7;
-        const vig = ctx.createRadialGradient(width * 0.5, height * 0.38, height * 0.2, width * 0.5, height * 0.5, height * 0.95);
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, `rgba(4, 8, 16, ${0.28 * na})`);
-        ctx.fillStyle = vig;
-        ctx.fillRect(0, 0, width, height);
-      }
-
-      animFrameRef.current = requestAnimationFrame(render);
     };
 
     render();
 
     return () => {
+      cancelled = true;
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
       if (ro) ro.disconnect();
@@ -1467,10 +1491,13 @@ export default function RikshaCanvas({
   const drawRoyalEnfield = (ctx, bx, by, currentMult, state, mult, sceneScale = 1) => {
     const img = bikeImgRef.current;
     const isFlying = state === 'FLYING';
-    const bAngle = isFlying ? -Math.min(0.06, (mult - 1) * 0.015) : 0;
+    // Keep both tires planted firmly on asphalt (no front-wheel lift into mid-air)
+    const bAngle = 0;
 
     if (img && img.complete && img.naturalWidth) {
-      const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+      const aspect = iw / Math.max(1, ih);
       const maxW = Math.max(210, 355 * sceneScale);
       const maxH = Math.max(145, 240 * sceneScale);
       let bikeWidth = maxW;
@@ -1483,276 +1510,215 @@ export default function RikshaCanvas({
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      // Grounded contact shadow on asphalt (aligned to bottom of tires at 0.845 * ih)
+      const speedFactor = isFlying ? Math.min(1, Math.log(Math.max(1.05, mult)) / Math.log(12)) : 0;
+      const wheelSpin = wheelAngleRef.current;
+      const scaleX = bikeWidth / iw;
+      const scaleY = bikeHeight / ih;
+      // Tire bottoms in 675x450 sprite sit at y=374.5 (0.8322 * ih) => 0.1122 * bikeHeight below (by - 0.22 * bikeHeight)
+      const tireGroundY = bikeHeight * 0.111;
+
+      const wheels = [
+        {
+          // Rear wheel: calibrated center (184, 298) inside chrome rim (r=50)
+          srcX: 184,
+          srcY: 298,
+          srcRimR: 50,
+          isFront: false,
+          exhaustBox: { x: 120, y: 308, w: 125, h: 26 },
+          bodyMaskX: 184,
+          bodyMaskTop: 244,
+          bodyMaskBot: 312,
+          occluder: { x1: 164, y1: 246, x2: 180, y2: 312, halfW: 8 }
+        },
+        {
+          // Front wheel: calibrated center (520, 298) inside chrome rim (r=51)
+          srcX: 520,
+          srcY: 298,
+          srcRimR: 51,
+          isFront: true,
+          exhaustBox: null,
+          caliperBox: { x: 488, y: 274, w: 30, h: 36 },
+          occluder: { x1: 499, y1: 242, x2: 521, y2: 300, halfW: 10 }
+        }
+      ].map((w) => ({
+        ...w,
+        destX: -bikeWidth / 2 + w.srcX * scaleX,
+        destY: -bikeHeight / 2 + w.srcY * scaleY,
+        destRimR: w.srcRimR * scaleX
+      }));
+
+      // Anchored road shadow + heavy tire-contact patches directly at the rubber-to-asphalt line (no floating gap)
       ctx.save();
-      ctx.translate(bx, by);
+      ctx.translate(bx, by + tireGroundY);
       ctx.beginPath();
-      ctx.ellipse(0, bikeHeight * 0.12, bikeWidth * 0.36, Math.max(4, 6 * sceneScale), 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.44)';
+      ctx.ellipse(bikeWidth * 0.02, 1.5 * sceneScale, bikeWidth * 0.35, Math.max(4, 6.5 * sceneScale), 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.46)';
       ctx.fill();
+      wheels.forEach(({ destX }) => {
+        ctx.beginPath();
+        ctx.ellipse(destX, 0.5 * sceneScale, 26 * scaleX, Math.max(2.6, 4 * sceneScale), 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+        ctx.fill();
+      });
       ctx.restore();
 
       ctx.save();
       ctx.translate(bx, by - bikeHeight * 0.22);
       ctx.rotate(bAngle);
 
-      const nowSec = performance.now() * 0.001;
-      const speedFactor = isFlying ? Math.min(1, Math.log(Math.max(1.05, mult)) / Math.log(12)) : 0;
+      // 1. Draw the original bike & rider sprite untouched (punching out only inner spoke discs so spokes spin without ghosting)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+      wheels.forEach(({ destX, destY, destRimR }) => {
+        ctx.moveTo(destX + destRimR, destY);
+        ctx.arc(destX, destY, destRimR, 0, Math.PI * 2);
+      });
+      ctx.clip('evenodd');
+      ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+      ctx.restore();
 
-      // Draw bike & rider with 60fps wind-wave on hair & smooth chest warp
-      try {
-        const iw = img.naturalWidth;
-        const ih = img.naturalHeight;
-        const hairCutX = Math.round(iw * 0.400); // exact hair root boundary (270px of 675px)
-        const hairCutY = Math.round(ih * 0.355); // bottom of hair (160px of 450px)
-
-        const chestSrcX = Math.round(iw * 0.462); // inner chest edge (312px)
-        const chestSrcY = Math.round(ih * 0.164); // taller box above collarbone (74px) for smooth monotonic warp
-        const chestSrcW = Math.round(iw * 0.059); // covers out to 352px (outer edge at 348px)
-        const chestSrcH = Math.round(ih * 0.128); // covers down to 132px (58px tall)
-        const chestEndX = chestSrcX + chestSrcW;
-        const chestEndY = chestSrcY + chestSrcH;
-
-        const destHairCutX = -bikeWidth / 2 + (hairCutX / iw) * bikeWidth;
-        const destHairCutY = -bikeHeight / 2 + (hairCutY / ih) * bikeHeight;
-        const chestDestX = -bikeWidth / 2 + (chestSrcX / iw) * bikeWidth;
-        const chestDestY = -bikeHeight / 2 + (chestSrcY / ih) * bikeHeight;
-        const chestDestW = (chestSrcW / iw) * bikeWidth;
-        const chestDestH = (chestSrcH / ih) * bikeHeight;
-        const destChestEndX = chestDestX + chestDestW;
-        const destChestEndY = chestDestY + chestDestH;
-
-        // 1. Main right section split cleanly around the chest warp box (no duplicate layer)
-        ctx.drawImage(
-          img,
-          hairCutX, 0, chestSrcX - hairCutX, ih,
-          destHairCutX, -bikeHeight / 2, destChestX - destHairCutX, bikeHeight
-        );
-        ctx.drawImage(
-          img,
-          chestEndX, 0, iw - chestEndX, ih,
-          destChestEndX, -bikeHeight / 2, (bikeWidth / 2) - destChestEndX, bikeHeight
-        );
-        ctx.drawImage(
-          img,
-          chestSrcX, 0, chestSrcW, chestSrcY,
-          chestDestX, -bikeHeight / 2, chestDestW, chestDestY + bikeHeight / 2
-        );
-        ctx.drawImage(
-          img,
-          chestSrcX, chestEndY, chestSrcW, ih - chestEndY,
-          chestDestX, destChestEndY, chestDestW, (bikeHeight / 2) - destChestEndY
-        );
-
-        // 2. Bottom-left section split cleanly around hip/bikini-bottom wind-flutter box
-        const dressSrcX = Math.round(iw * 0.325);
-        const dressSrcY = hairCutY; // 0.355 * ih (right below hair cut)
-        const dressSrcW = hairCutX - dressSrcX;
-        const dressSrcH = Math.round(ih * 0.080); // covers bikini bottom & hip tie (0.355..0.435)
-        const dressEndY = dressSrcY + dressSrcH;
-        const destDressX = -bikeWidth / 2 + (dressSrcX / iw) * bikeWidth;
-        const destDressW = (dressSrcW / iw) * bikeWidth;
-        const destDressH = (dressSrcH / ih) * bikeHeight;
-        const destDressEndY = destHairCutY + destDressH;
-
-        // Left of dress box
-        ctx.drawImage(
-          img,
-          0, hairCutY, dressSrcX, ih - hairCutY,
-          -bikeWidth / 2, destHairCutY, (dressSrcX / iw) * bikeWidth, bikeHeight - (hairCutY / ih) * bikeHeight
-        );
-        // Below dress box (rear seat, rear wheel, exhaust)
-        ctx.drawImage(
-          img,
-          dressSrcX, dressEndY, dressSrcW, ih - dressEndY,
-          destDressX, destDressEndY, destDressW, (bikeHeight / 2) - destDressEndY
-        );
-
-        // 2b. Bikini bottom & lace edge wind flutter (anchored at right edge hairCutX)
-        const dressFreq = isFlying ? 13.5 + speedFactor * 5.5 : 6.8;
-        const dressAmp = (isFlying ? 4.2 + speedFactor * 2.2 : 2.4) * sceneScale;
-        const dressSlices = 10;
-        const dSliceSrcW = dressSrcW / dressSlices;
-        const dSliceDestW = destDressW / dressSlices;
-        for (let i = 0; i < dressSlices; i++) {
-          const sx = dressSrcX + i * dSliceSrcW;
-          const dx = destDressX + i * dSliceDestW;
-          const distRatio = (hairCutX - sx) / Math.max(1, dressSrcW);
-          const dy = Math.sin(nowSec * dressFreq + i * 0.38) * dressAmp * Math.pow(distRatio, 1.25);
-          ctx.drawImage(
-            img,
-            sx, dressSrcY, dSliceSrcW + 0.6, dressSrcH,
-            dx, destHairCutY + dy, dSliceDestW + 0.6, destDressH
-          );
-        }
-
-        // 2c. Fluttering red lace hip tie-strings streaming in the wind
-        const tieX = -bikeWidth * 0.115;
-        const tieY = -bikeHeight * 0.115;
-        const tieLen = (isFlying ? 22 + speedFactor * 10 : 14) * sceneScale;
+      // 2. Render clean concentric spinning spokes/rotor inside the rims & restore stationary hardware over them
+      wheels.forEach(({ destX, destY, destRimR, isFront, exhaustBox, bodyMaskX, bodyMaskTop, bodyMaskBot, caliperBox, occluder }) => {
+        // 2a. Concentric spinning wire spokes + rotor/hub + anti-alias motion sheen
         ctx.save();
-        ctx.lineCap = 'round';
-        [
-          { yOff: 0, phase: 0, color: '#e11d48', width: 1.5 },
-          { yOff: 2.2 * sceneScale, phase: 1.3, color: '#be123c', width: 1.2 }
-        ].forEach(({ yOff, phase, color, width }) => {
-          const wA = Math.sin(nowSec * (dressFreq + 2) + phase) * (isFlying ? 5.5 : 3.0) * sceneScale;
-          const wB = Math.cos(nowSec * (dressFreq + 3.5) + phase) * (isFlying ? 7.5 : 4.2) * sceneScale;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = Math.max(1, width * sceneScale);
-          ctx.beginPath();
-          ctx.moveTo(tieX, tieY + yOff);
-          ctx.quadraticCurveTo(tieX - tieLen * 0.5, tieY + yOff + wA, tieX - tieLen, tieY + yOff + 2 * sceneScale + wB);
-          ctx.stroke();
-        });
-        ctx.restore();
-
-        // 3. Seamless monotonic sin^2 bell-curve bounce on chest (never inverts or crushes slices)
-        const bounceFreq = isFlying ? 15.5 + speedFactor * 5.0 : 8.5;
-        const maxSafeAmp = chestDestH * 0.28; // guaranteed monotonic (dyBot > dyTop) for sin^2(pi*t)
-        const bounceAmp = Math.min(maxSafeAmp, (isFlying ? 8.5 : 5.4) * sceneScale);
-        const rawWave = Math.sin(nowSec * bounceFreq) + 0.35 * Math.sin(nowSec * bounceFreq * 2 - 0.6);
-        const bounceWave = Math.max(-maxSafeAmp, Math.min(maxSafeAmp, rawWave * bounceAmp * 0.85));
-        const cSlices = 14;
-        const cSliceSrcH = chestSrcH / cSlices;
-        const cSliceDestH = chestDestH / cSlices;
-
-        for (let j = 0; j < cSlices; j++) {
-          const t0 = j / cSlices;
-          const t1 = (j + 1) / cSlices;
-          const s0 = Math.sin(Math.PI * t0);
-          const s1 = Math.sin(Math.PI * t1);
-          const w0 = s0 * s0;
-          const w1 = s1 * s1;
-          const dy0 = bounceWave * w0;
-          const dy1 = bounceWave * w1;
-          const dxMid = bounceWave * -0.22 * ((w0 + w1) * 0.5);
-          const sy = chestSrcY + j * cSliceSrcH;
-          const dyTop = chestDestY + j * cSliceDestH + dy0;
-          const dyBot = chestDestY + (j + 1) * cSliceDestH + dy1;
-          ctx.drawImage(
-            img,
-            chestSrcX, sy, chestSrcW, cSliceSrcH + 0.5,
-            chestDestX + dxMid, dyTop, chestDestW, (dyBot - dyTop) + 0.6
-          );
-        }
-
-        // 4. Sweeping multi-harmonic wind-wave on flowing hair
-        const hairStartX = Math.round(iw * 0.285);
-        const hairSpanW = hairCutX - hairStartX;
-        const hairFreq = isFlying ? 12.0 + speedFactor * 6.0 : 6.5;
-        const hairAmp = (isFlying ? 14.0 + speedFactor * 7.5 : 8.5) * sceneScale;
-        const hairSlices = 22;
-        const hSliceSrcW = hairSpanW / hairSlices;
-        const hSliceDestW = ((hairSpanW / iw) * bikeWidth) / hairSlices;
-        const hDestH = (hairCutY / ih) * bikeHeight;
-        const destHairStartX = -bikeWidth / 2 + (hairStartX / iw) * bikeWidth;
-
-        for (let i = 0; i < hairSlices; i++) {
-          const sx = hairStartX + i * hSliceSrcW;
-          const dx = destHairStartX + i * hSliceDestW;
-          const distRatio = (hairCutX - sx) / hairSpanW;
-          const wave1 = Math.sin(nowSec * hairFreq + i * 0.26);
-          const wave2 = Math.sin(nowSec * hairFreq * 1.7 + i * 0.42) * 0.35;
-          const dy = (wave1 + wave2) * hairAmp * Math.pow(distRatio, 1.1);
-          const dxStretch = Math.cos(nowSec * hairFreq + i * 0.24) * (hairAmp * 0.18) * distRatio;
-          ctx.drawImage(
-            img,
-            sx, 0, hSliceSrcW + 0.6, hairCutY,
-            dx + dxStretch, -bikeHeight / 2 + dy, hSliceDestW + 0.8, hDestH
-          );
-        }
-
-        // 4b. Trailing wind-blown hair wisps beyond the tip
-        ctx.save();
-        ctx.lineCap = 'round';
-        [
-          { yRatio: -0.34, len: 18, phase: 0.2, color: 'rgba(42, 18, 7, 0.72)' },
-          { yRatio: -0.27, len: 22, phase: 1.4, color: 'rgba(92, 45, 22, 0.55)' },
-          { yRatio: -0.21, len: 15, phase: 2.5, color: 'rgba(42, 18, 7, 0.65)' }
-        ].forEach(({ yRatio, len, phase, color }) => {
-          const tipX = destHairStartX + 4 * sceneScale;
-          const tipY = bikeHeight * yRatio;
-          const wispLen = (len + speedFactor * 10) * sceneScale;
-          const w1 = Math.sin(nowSec * hairFreq + phase) * hairAmp * 0.65;
-          const w2 = Math.cos(nowSec * hairFreq * 1.3 + phase) * hairAmp * 0.85;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = Math.max(1.1, 1.6 * sceneScale);
-          ctx.beginPath();
-          ctx.moveTo(tipX, tipY + w1 * 0.35);
-          ctx.quadraticCurveTo(tipX - wispLen * 0.5, tipY + w1, tipX - wispLen, tipY + w2);
-          ctx.stroke();
-        });
-        ctx.restore();
-      } catch (err) {
-        console.error('Bike sprite animation error:', err);
-        ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
-      }
-
-      // 5. Photorealistic spinning wheels (rotates actual spoked wheel pixels, keeping fork/shock/exhaust stationary)
-      const wheelSpin = roadOffsetRef.current * 0.22;
-      const scaleX = bikeWidth / iw;
-      const scaleY = bikeHeight / ih;
-
-      const wheels = [
-        {
-          // Rear wheel: center ~(189, 297) in 675x450
-          srcX: 189,
-          srcY: 297,
-          srcRimR: 46,
-          exhaustCutY: -bikeHeight / 2 + 313 * scaleY,
-          occluder: { x1: 163, y1: 250, x2: 173, y2: 313, halfW: 8 },
-          isRear: true
-        },
-        {
-          // Front wheel: center ~(520.5, 294.5) in 675x450
-          srcX: 520.5,
-          srcY: 294.5,
-          srcRimR: 49,
-          exhaustCutY: null,
-          occluder: { x1: 503, y1: 245, x2: 521, y2: 296, halfW: 9 },
-          isRear: false
-        }
-      ];
-
-      wheels.forEach(({ srcX, srcY, srcRimR, exhaustCutY, occluder, isRear }) => {
-        const destX = -bikeWidth / 2 + srcX * scaleX;
-        const destY = -bikeHeight / 2 + srcY * scaleY;
-        const destRimR = srcRimR * scaleX;
-
-        // 5a. Draw rotated inner spoked wheel from sprite
-        ctx.save();
-        if (exhaustCutY !== null) {
-          ctx.beginPath();
-          ctx.rect(-bikeWidth * 0.5, -bikeHeight * 0.5, bikeWidth, exhaustCutY + bikeHeight * 0.5);
-          ctx.clip();
-        }
         ctx.beginPath();
         ctx.arc(destX, destY, destRimR, 0, Math.PI * 2);
         ctx.clip();
-
         ctx.translate(destX, destY);
-        ctx.rotate(wheelSpin);
-        ctx.drawImage(
-          img,
-          srcX - srcRimR, srcY - srcRimR, srcRimR * 2, srcRimR * 2,
-          -destRimR, -destRimR, destRimR * 2, destRimR * 2
-        );
 
-        // Subtle high-speed radial sheen when flying
-        if (isFlying && speedFactor > 0.05) {
-          const sheenGrad = ctx.createRadialGradient(0, 0, destRimR * 0.25, 0, 0, destRimR);
-          sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-          sheenGrad.addColorStop(0.65, `rgba(226, 232, 240, ${0.14 * speedFactor})`);
-          sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.fillStyle = sheenGrad;
+        // Subtle dark depth backing behind spokes matching shaded wheel well
+        ctx.fillStyle = 'rgba(8, 12, 18, 0.34)';
+        ctx.beginPath();
+        ctx.arc(0, 0, destRimR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Subtle rotational motion-blur ring when moving fast
+        if (speedFactor > 0.08) {
+          const blurGrad = ctx.createRadialGradient(0, 0, destRimR * 0.32, 0, 0, destRimR);
+          blurGrad.addColorStop(0, 'rgba(226, 232, 240, 0)');
+          blurGrad.addColorStop(0.55, `rgba(203, 213, 225, ${0.18 * speedFactor})`);
+          blurGrad.addColorStop(0.95, `rgba(226, 232, 240, ${0.12 * speedFactor})`);
+          blurGrad.addColorStop(1, 'rgba(226, 232, 240, 0)');
+          ctx.fillStyle = blurGrad;
           ctx.beginPath();
           ctx.arc(0, 0, destRimR, 0, Math.PI * 2);
           ctx.fill();
         }
+
+        // Crisp clockwise-spinning cross-laced metallic wire spokes
+        ctx.save();
+        ctx.rotate(wheelSpin);
+        const spokeAlpha = isFlying ? Math.max(0.32, 0.72 - speedFactor * 0.35) : 0.75;
+        ctx.strokeStyle = `rgba(226, 232, 240, ${spokeAlpha})`;
+        ctx.lineWidth = Math.max(0.75, destRimR * 0.036);
+        const spokeCount = 20;
+        for (let i = 0; i < spokeCount; i++) {
+          const a = (Math.PI * 2 * i) / spokeCount;
+          const cross = i % 2 === 0 ? 0.24 : -0.24;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * destRimR * 0.24, Math.sin(a) * destRimR * 0.24);
+          ctx.lineTo(Math.cos(a + cross) * destRimR * 0.98, Math.sin(a + cross) * destRimR * 0.98);
+          ctx.stroke();
+        }
+
+        // Rotating bright spoke/rim glint cues so forward spin reads unmistakably
+        ctx.strokeStyle = `rgba(255, 255, 255, ${isFlying ? 0.42 : 0.3})`;
+        ctx.lineWidth = Math.max(1.1, destRimR * 0.055);
+        for (let k = 0; k < 3; k++) {
+          const ga = (Math.PI * 2 * k) / 3 + 0.3;
+          ctx.beginPath();
+          ctx.arc(0, 0, destRimR * 0.91, ga, ga + 0.28);
+          ctx.stroke();
+        }
+
+        if (isFront) {
+          // Spinning drilled stainless front brake disc rotor
+          ctx.fillStyle = 'rgba(203, 213, 225, 0.78)';
+          ctx.beginPath();
+          ctx.arc(0, 0, destRimR * 0.54, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+          ctx.beginPath();
+          ctx.arc(0, 0, destRimR * 0.34, 0, Math.PI * 2);
+          ctx.fill();
+          // Rotor vent holes so rotation is visible on the disc itself
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+          for (let h = 0; h < 8; h++) {
+            const ha = (Math.PI * 2 * h) / 8;
+            ctx.beginPath();
+            ctx.arc(Math.cos(ha) * destRimR * 0.44, Math.sin(ha) * destRimR * 0.44, Math.max(1, destRimR * 0.036), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          // Rear drum hub
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+          ctx.beginPath();
+          ctx.arc(0, 0, destRimR * 0.38, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Center axle nut
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(1.5, destRimR * 0.12), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
         ctx.restore();
 
-        // 5b. Restore stationary fork leg (front) or rear shock (rear) over the spinning spokes
+        // 2b. Restore stationary rear hardware (chrome exhaust muffler + swingarm/sidecover) from original sprite
+        if (exhaustBox) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(destX, destY, destRimR + 1, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.beginPath();
+          ctx.rect(
+            -bikeWidth / 2 + exhaustBox.x * scaleX,
+            -bikeHeight / 2 + exhaustBox.y * scaleY,
+            exhaustBox.w * scaleX,
+            exhaustBox.h * scaleY
+          );
+          ctx.clip();
+          ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+          ctx.restore();
+        }
+        if (bodyMaskX !== undefined) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(destX, destY, destRimR + 1, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.beginPath();
+          ctx.rect(
+            -bikeWidth / 2 + bodyMaskX * scaleX,
+            -bikeHeight / 2 + bodyMaskTop * scaleY,
+            destRimR + 4,
+            (bodyMaskBot - bodyMaskTop) * scaleY
+          );
+          ctx.clip();
+          ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+          ctx.restore();
+        }
+
+        // 2c. Restore stationary front brake caliper from original sprite
+        if (caliperBox) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(destX, destY, destRimR + 1, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.beginPath();
+          ctx.rect(
+            -bikeWidth / 2 + caliperBox.x * scaleX,
+            -bikeHeight / 2 + caliperBox.y * scaleY,
+            caliperBox.w * scaleX,
+            caliperBox.h * scaleY
+          );
+          ctx.clip();
+          ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
+          ctx.restore();
+        }
+
+        // 2d. Restore stationary fork leg (front) or rear shock (rear) over the spinning spokes
         const ox1 = -bikeWidth / 2 + occluder.x1 * scaleX;
         const oy1 = -bikeHeight / 2 + occluder.y1 * scaleY;
         const ox2 = -bikeWidth / 2 + occluder.x2 * scaleX;
@@ -1774,16 +1740,16 @@ export default function RikshaCanvas({
         ctx.drawImage(img, -bikeWidth / 2, -bikeHeight / 2, bikeWidth, bikeHeight);
         ctx.restore();
 
-        // 5c. Tire-contact road dust when flying
+        // 2e. Tire-contact road dust directly at asphalt contact point when flying
         if (isFlying) {
           ctx.save();
-          const kickLen = (14 + speedFactor * 22) * sceneScale;
-          const gy = destY + destRimR * 1.48;
+          const kickLen = (16 + speedFactor * 24) * sceneScale;
+          const gy = bikeHeight * 0.331; // matches tireGroundY relative to (by - 0.22 * bikeHeight)
           const kickGrad = ctx.createLinearGradient(destX, gy, destX - kickLen, gy);
-          kickGrad.addColorStop(0, `rgba(203, 213, 225, ${0.14 + speedFactor * 0.12})`);
+          kickGrad.addColorStop(0, `rgba(203, 213, 225, ${0.18 + speedFactor * 0.14})`);
           kickGrad.addColorStop(1, 'rgba(203, 213, 225, 0)');
           ctx.strokeStyle = kickGrad;
-          ctx.lineWidth = Math.max(1.2, 2 * sceneScale);
+          ctx.lineWidth = Math.max(1.4, 2.2 * sceneScale);
           ctx.lineCap = 'round';
           ctx.beginPath();
           ctx.moveTo(destX - 4 * sceneScale, gy);
@@ -1791,8 +1757,6 @@ export default function RikshaCanvas({
           ctx.stroke();
           ctx.restore();
         }
-
-        void isRear;
       });
 
       ctx.restore();
